@@ -533,11 +533,11 @@ async def aggregate_events():
         browser = await p.chromium.launch(headless=True, slow_mo=50)
         page = await browser.new_page()
 
-        all_events += await scrape_eventbrite(page)
-        all_events += await scrape_fever(page)
-        all_events += await scrape_meetup(page)
+        #all_events += await scrape_eventbrite(page)
+        #all_events += await scrape_fever(page)
+        #all_events += await scrape_meetup(page)
         all_events += await scrape_ticketmaster(page)
-        all_events += await scrape_blogto(page)
+        #all_events += await scrape_blogto(page)
 
         await browser.close()
 
