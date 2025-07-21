@@ -360,8 +360,8 @@ async def scrape_ticketmaster(page):
     await asyncio.sleep(4)
 
     # ⌨️ Type and select location
-    await page.wait_for_selector('input[aria-label="City or Postal Code"]')
-    input_box = await page.query_selector('input[aria-label="City or Postal Code"]')
+    #await page.wait_for_selector('input[aria-label="City or Postal Code"]')
+    input_box = await page.query_selector("input[placeholder*='Postal Code'], input[aria-label*='Postal Code'], input")
     await input_box.click()
     await input_box.fill("")
     await input_box.type("Midtown Toronto, ON")
