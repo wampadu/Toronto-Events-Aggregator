@@ -345,64 +345,58 @@ async def scrape_meetup(page):
     print(f"✅ Finished scraping. Found {len(events)} events.")
     return events
 
-async def scrape_ticketmaster(playwright):
+async def scrape_ticketmaster(page):
+    
     print("🔍 Scraping Ticketmaster...")
     events = []
-    
     # Generate dynamic date range
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
+    
+    # Set extra HTTP headers
+    await page.set_extra_http_headers({
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.google.com/",
+        "Upgrade-Insecure-Requests": "1",
+        "DNT": "1",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    })
 
-    # ⬇️ Separate browser just for Ticketmaster
-    browser = await playwright.chromium.launch(headless=False, slow_mo=50)
-    context = await browser.new_context(
-        geolocation={"latitude": 43.6532, "longitude": -79.3832},
-        permissions=["geolocation"],
-        viewport={"width": 1280, "height": 800},
-        locale="en-US",
-        timezone_id="America/Toronto",
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    )
+    # Set viewport and emulate media
+    await page.set_viewport_size({"width": 1280, "height": 800})
+    await page.emulate_media(media="screen")
 
-    # 🛡️ Patch navigator.webdriver
-    await context.add_init_script('Object.defineProperty(navigator, "webdriver", { get: () => undefined })')
+    # Patch webdriver property to undefined
+    await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => undefined})')
 
-    page = await context.new_page()
-
-    # 🌱 Warm-up page to make session look real
-    await page.goto("https://www.google.com/")
-    await asyncio.sleep(2)
-
-    # 🚀 Navigate to Ticketmaster
     await page.goto(url)
-    await asyncio.sleep(8)
+    await asyncio.sleep(4)
 
-    # ⌨️ Set location
-    try:
-        await page.wait_for_selector('input[aria-label="City or Postal Code"]')
-        input_box = await page.query_selector("input[placeholder*='Postal Code'], input[aria-label*='Postal Code'], input")
-        await input_box.click()
-        await input_box.fill("")
-        await input_box.type("Midtown Toronto, ON")
-        await asyncio.sleep(2.5)
+    print(await page.content())
+    # ⌨️ Type and select location
+    await page.wait_for_selector('input[aria-label="City or Postal Code"]')
+    input_box = await page.query_selector("input[placeholder*='Postal Code'], input[aria-label*='Postal Code'], input")
+    await input_box.click()
+    await input_box.fill("")
+    await input_box.type("Midtown Toronto, ON")
+    await asyncio.sleep(2.5)
 
-        suggestions = await page.query_selector_all('[data-reach-combobox-option]')
-        if len(suggestions) >= 2:
-            await suggestions[1].click()
-        else:
-            print("❌ Location option not found.")
-            await browser.close()
-            return []
-        await asyncio.sleep(4)
-    except Exception as e:
-        print("❌ Error setting location:", e)
-        await browser.close()
+    # ✅ Click the second suggestion (Midtown)
+    suggestions = await page.query_selector_all('[data-reach-combobox-option]')
+    if len(suggestions) >= 2:
+        await suggestions[1].click()
+    else:
+        print("❌ Location option not found.")
         return []
 
+    await input_box.click()
+    await asyncio.sleep(4)
+    
     print("🔄 Scrolling by clicking 'Show More'...")
 
+    # 🔁 Scroll logic
     stop_scrolling = False
     retries = 0
     last_event_count = 0
@@ -425,6 +419,7 @@ async def scrape_ticketmaster(playwright):
             retries = 0
         last_event_count = len(cards)
 
+        # 🛑 Stop if last event is no longer in Toronto
         if cards:
             last_event_text = await cards[-1].inner_text()
             if "Toronto, ON" not in last_event_text:
@@ -433,6 +428,7 @@ async def scrape_ticketmaster(playwright):
 
     print("✅ Finished scrolling.")
 
+    # 🧾 Parse all cards
     final_cards = await page.query_selector_all('li.sc-a4c9d98c-1')
 
     for card in final_cards:
@@ -472,8 +468,7 @@ async def scrape_ticketmaster(playwright):
         except Exception as e:
             print("⚠️ Error extracting event:", e)
 
-    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")
-    await browser.close()
+    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")   
     return events
 
 async def scrape_blogto(page):
