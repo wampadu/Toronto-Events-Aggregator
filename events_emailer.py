@@ -548,10 +548,10 @@ async def aggregate_events():
     all_events = []
 
     async with async_playwright() as p:
-        # 🎯 Launch headless browser (GitHub-compatible)
+        # 🎯 Launch headless browser (for GitHub Actions compatibility)
         browser = await p.chromium.launch(headless=True)
 
-        # === Shared anti-bot context settings ===
+        # 🌐 Shared browser context with anti-bot tweaks
         context = await browser.new_context(
             geolocation={"latitude": 43.6532, "longitude": -79.3832},
             permissions=["geolocation"],
@@ -561,7 +561,7 @@ async def aggregate_events():
             timezone_id="America/Toronto"
         )
 
-        # 🔐 Shared page with stealth tweaks
+        # 🚫 Block navigator.webdriver and spoof language/plugins
         page = await context.new_page()
         await page.add_init_script('Object.defineProperty(navigator, "webdriver", { get: () => undefined })')
         await page.add_init_script("""
@@ -586,7 +586,7 @@ async def aggregate_events():
 
         await browser.close()
 
-    # ✅ De-duplicate by title
+    # ✅ De-duplicate events by title
     seen_titles = set()
     deduped_events = []
     for event in all_events:
@@ -595,17 +595,19 @@ async def aggregate_events():
             seen_titles.add(title_key)
             deduped_events.append(event)
 
+    # 💾 Save HTML output
     html_output = generate_html(deduped_events)
     with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
         f.write(html_output)
     print("✅ File saved: weekend_events_toronto.html")
 
-    # 📧 Send email
+    # 📧 Send email with attachment
     send_email_with_attachment(
         to_email=os.getenv("EMAIL_TO"),
         subject=f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
         html_path="weekend_events_toronto.html"
     )
+
 
 
 if __name__ == "__main__":
