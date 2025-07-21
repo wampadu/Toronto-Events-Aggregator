@@ -355,9 +355,23 @@ async def scrape_ticketmaster(page):
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
+    
+    # Set extra HTTP headers
     await page.set_extra_http_headers({
-    "Accept-Language": "en-US,en;q=0.9",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"})
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.google.com/",
+        "Upgrade-Insecure-Requests": "1",
+        "DNT": "1",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    })
+
+    # Set viewport and emulate media
+    await page.set_viewport_size({"width": 1280, "height": 800})
+    await page.emulate_media(media="screen")
+
+    # Patch webdriver property to undefined
+    await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => undefined})')
+
     await page.goto(url)
     await asyncio.sleep(4)
 
