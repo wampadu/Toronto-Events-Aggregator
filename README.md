@@ -51,9 +51,7 @@ friday = today + timedelta(days=days_until_friday)
 
 📌 **Note:** You must enable [2FA in Gmail](https://myaccount.google.com/security) and create an [App Password](https://myaccount.google.com/apppasswords).
 
-This project currently automates using **GitHub Actions** when forked.
-
-It runs every **Friday at 6:00 AM EST**, triggered by a scheduled workflow (`.github/workflows/scrape-events.yml`), so you'll always have event picks before the weekend after next.
+It runs every **Friday at 6:00 AM EST**, triggered by a **GitHub Actions** scheduled workflow (`.github/workflows/scrape-events.yml`) when forked, so you'll always have event picks before the weekend after next.
 
 You can also manually trigger it via the **"Run workflow"** button on the GitHub Actions tab.
 
