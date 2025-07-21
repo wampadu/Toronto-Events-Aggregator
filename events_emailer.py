@@ -347,27 +347,22 @@ async def scrape_meetup(page):
     return events
 
 async def scrape_ticketmaster(page):
+    
     print("🔍 Scraping Ticketmaster...")
-
-    # Set a realistic User-Agent and extra headers
-    await page.set_extra_http_headers({
-    "Accept-Language": "en-US,en;q=0.9",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-})
-
     events = []
     # Generate dynamic date range
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
+    await page.set_extra_http_headers({
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"})
     await page.goto(url)
     await asyncio.sleep(4)
-    
-    print(await page.content())
 
     # ⌨️ Type and select location
-    #await page.wait_for_selector('input[aria-label="City or Postal Code"]')
+    await page.wait_for_selector('input[aria-label="City or Postal Code"]')
     input_box = await page.query_selector("input[placeholder*='Postal Code'], input[aria-label*='Postal Code'], input")
     await input_box.click()
     await input_box.fill("")
