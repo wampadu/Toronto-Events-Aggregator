@@ -357,20 +357,9 @@ async def scrape_ticketmaster(page):
     url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
     await page.goto(url)
     await asyncio.sleep(4)
-
-    # Print partial HTML
-    html = await page.content()
-    print("\n🧾 [Ticketmaster HTML Preview - Start]")
-    print(html[:3000])
-    print("🧾 [Ticketmaster HTML Preview - End]\n")
-
-    # Check for the location input
-    city_input = await page.query_selector('input[aria-label="City or Postal Code"]')
-    if city_input:
-        print("✅ Found city input element before waiting.")
-    else:
-        print("❌ City input element NOT found immediately.")
-
+    
+    print(await page.content())
+"""
 
     # ⌨️ Type and select location
     #await page.wait_for_selector('input[aria-label="City or Postal Code"]')
@@ -466,6 +455,7 @@ async def scrape_ticketmaster(page):
             print("⚠️ Error extracting event:", e)
 
     print(f"✅ Finished scraping. Found {len(events)} Toronto events.")
+"""    
     return events
 
 async def scrape_blogto(page):
@@ -550,7 +540,7 @@ async def aggregate_events():
         all_events += await scrape_eventbrite(page)
         all_events += await scrape_fever(page)
         all_events += await scrape_meetup(page)
-        #all_events += await scrape_ticketmaster(page)
+        all_events += await scrape_ticketmaster(page)
         all_events += await scrape_blogto(page)
 
         await browser.close()
