@@ -196,7 +196,6 @@ def generate_html(events):
 async def scrape_eventbrite(page):
     print("🔍 Scraping Eventbrite...")
     events = []
-    printed_titles = set()
     target_dates = [(d.strftime('%b %d')) for d in get_upcoming_weekend_dates()]
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
@@ -238,7 +237,6 @@ async def scrape_eventbrite(page):
                 price_el = await card.query_selector("div[class*='priceWrapper'] p")
                 price = (await price_el.inner_text()).strip() if price_el else "Free"
 
-                printed_titles.add(title)
                 events.append({
                     "title": title,
                     "date": date_text,
@@ -565,10 +563,10 @@ async def aggregate_events():
         page_general = await context_general.new_page()
 
         # Uncomment other sources as needed
-        all_events += await scrape_eventbrite(page_general)
-        all_events += await scrape_fever(page_general)
-        all_events += await scrape_meetup(page_general)
-        all_events += await scrape_blogto(page_general)
+        #all_events += await scrape_eventbrite(page_general)
+        #all_events += await scrape_fever(page_general)
+        #all_events += await scrape_meetup(page_general)
+        #all_events += await scrape_blogto(page_general)
 
         await browser_general.close()
 
