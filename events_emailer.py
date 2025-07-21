@@ -424,8 +424,8 @@ async def scrape_blogto(page):
     return events
 
 def send_email_with_attachment(to_email, subject, html_path):
-    from_email = "wendyampadu@gmail.com"
-    app_password = "ldmf uegm ewvb xxke"  # Use an App Password, not your Gmail password
+    from_email = os.getenv("GMAIL_USER")
+    app_password = os.getenv("GMAIL_PASS")  # Use an App Password, not your Gmail password
 
     msg = MIMEMultipart()
     msg['From'] = from_email
@@ -483,7 +483,7 @@ async def aggregate_events():
 
     # Send the email
     send_email_with_attachment(
-        to_email="wendyampadu@gmail.com",
+        to_email=os.getenv("EMAIL_TO"),
         subject= f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')},
         html_path=filename
     )
