@@ -359,6 +359,20 @@ async def scrape_ticketmaster(page):
     await page.goto(url)
     await asyncio.sleep(4)
 
+    # Print partial HTML
+    html = await page.content()
+    print("\n🧾 [Ticketmaster HTML Preview - Start]")
+    print(html[:3000])
+    print("🧾 [Ticketmaster HTML Preview - End]\n")
+
+    # Check for the location input
+    city_input = await page.query_selector('input[aria-label="City or Postal Code"]')
+    if city_input:
+        print("✅ Found city input element before waiting.")
+    else:
+        print("❌ City input element NOT found immediately.")
+
+
     # ⌨️ Type and select location
     #await page.wait_for_selector('input[aria-label="City or Postal Code"]')
     input_box = await page.query_selector("input[placeholder*='Postal Code'], input[aria-label*='Postal Code'], input")
