@@ -2,7 +2,7 @@ name: Toronto Weekend Events
 
 on:
   schedule:
-    - cron: '0 10 * * 5' # Every Friday 10:00 AM EST (14:00 UTC)
+    - cron: '0 10 * * 5'  # Every Friday 6:00 AM EST (14:00 UTC)
   workflow_dispatch:
 
 jobs:
@@ -20,12 +20,14 @@ jobs:
 
       - name: Install dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb  # Install X virtual framebuffer
           pip install -r requirements.txt
           playwright install --with-deps
 
-      - name: Run script
+      - name: Run script with virtual display
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
           EMAIL_TO:   ${{ secrets.EMAIL_TO }}
-        run: python events_emailer.py
+        run: xvfb-run -a python events_emailer.py
