@@ -197,7 +197,11 @@ async def scrape_eventbrite(page):
     events = []
     printed_titles = set()
     target_dates = [(d.strftime('%b %d')) for d in get_upcoming_weekend_dates()]
-    await page.goto("https://www.eventbrite.ca/d/canada--toronto/events/?start_date=2025-07-25&end_date=2025-07-27")
+    dates = get_upcoming_weekend_dates()
+    start_str = dates[0].strftime("%Y-%m-%d")
+    end_str = dates[-1].strftime("%Y-%m-%d")
+    url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
+    await page.goto(url)
 
     while True:
         print("🔄 Scrolling to load events on current page...")
@@ -265,7 +269,11 @@ async def scrape_eventbrite(page):
 async def scrape_fever(page):
     print("🔍 Scraping Fever...") 
     events = []
-    await page.goto("https://feverup.com/en/toronto/things-to-do?date=2025-07-25until2025-07-27")
+    dates = get_upcoming_weekend_dates()
+    start_str = dates[0].strftime("%Y-%m-%d")
+    end_str = dates[-1].strftime("%Y-%m-%d")
+    url = f"https://feverup.com/en/toronto/things-to-do?date={start_str}until{end_str}"
+    await page.goto(url)
     await page.wait_for_selector('li[data-testid="fv-wpf-plan-grid__list-item"]')
 
     previous_height = 0
@@ -304,6 +312,10 @@ async def scrape_meetup(page):
     print("🔍 Scraping Meetup...")
     events = []
     url = "https://www.meetup.com/find/?location=ca--on--Toronto&source=EVENTS&customStartDate=2025-07-25T00%3A00%3A00-04%3A00&customEndDate=2025-07-27T23%3A59%3A00-04%3A00&eventType=inPerson"
+    dates = get_upcoming_weekend_dates()
+    start_str = dates[0].strftime("%Y-%m-%dT00%%3A00%%3A00-04%%3A00")  # URL encoded "T00:00:00-04:00"
+    end_str = dates[-1].strftime("%Y-%m-%dT23%%3A59%%3A00-04%%3A00")
+    url = f"https://www.meetup.com/find/?location=ca--on--Toronto&source=EVENTS&customStartDate={start_str}&customEndDate={end_str}&eventType=inPerson"
     await page.goto(url)
 
     retries = 0
@@ -338,7 +350,10 @@ async def scrape_meetup(page):
 async def scrape_ticketmaster(page):
     print("🔍 Scraping Ticketmaster...")
     events = []
-    url = "https://www.ticketmaster.ca/search?startDate=2025-07-25&endDate=2025-07-27&sort=date"
+    dates = get_upcoming_weekend_dates()
+    start_str = dates[0].strftime("%Y-%m-%d")
+    end_str = dates[-1].strftime("%Y-%m-%d")
+    url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
     await page.goto(url)
     await asyncio.sleep(5)
 
@@ -434,7 +449,7 @@ def send_email_with_attachment(to_email, subject, html_path):
     msg['Subject'] = subject
 
     # Attach body
-    msg.attach(MIMEText("Open your Toronto Weekend Events HTML file and book an event 2 weeks from now for your social life.", 'plain'))
+    msg.attach(MIMEText("open your 'Toronto Weekend Events' HTML file and book an event 2 weeks from now for your social life.", 'plain'))
 
     # Attach the file
     with open(html_path, "rb") as file:
