@@ -23,19 +23,9 @@ It generates an interactive, searchable HTML table and emails the file to you we
 
 ---
 
-## ⏰ Automated Weekly via GitHub Actions
+##  Disclaimer:  It Scrapes 2 Weeks Ahead
 
-This project is fully automated using **GitHub Actions**.
-
-It runs every **Friday at 10:00 AM EST**, triggered by a scheduled workflow (`.github/workflows/scrape-events.yml`), so you'll always have event picks before the weekend after next.
-
-You can also manually trigger it via the **"Run workflow"** button on the GitHub Actions tab.
-
----
-
-## ⚠️ Disclaimer:  It Scrapes 2 Weeks Ahead
-
-This script is currently set to scrape events **two weekends from now** (not this upcoming weekend).  
+This script is currently set to scrape events **two weekends from now** (not for the upcoming weekend).  
 The idea is to give you **more time to plan, invite friends, and book tickets early**.
 Want it to scrape only this upcoming weekend?
 In `events_emailer.py`, find this line in the `get_upcoming_weekend_dates()` function:
@@ -43,7 +33,7 @@ In `events_emailer.py`, find this line in the `get_upcoming_weekend_dates()` fun
 friday = today + timedelta(days=days_until_friday + 7)
 And replace it with:
 friday = today + timedelta(days=days_until_friday)
-
+```
 ---
 
 ### 🛠️ How to Use This Repo Yourself
@@ -63,6 +53,14 @@ friday = today + timedelta(days=days_until_friday)
 
 ---
 
+## ⏰ Automated Weekly via GitHub Actions
+
+This project is fully automated using **GitHub Actions**.
+
+It runs every **Friday at 10:00 AM EST**, triggered by a scheduled workflow (`.github/workflows/scrape-events.yml`), so you'll always have event picks before the weekend after next.
+
+You can also manually trigger it via the **"Run workflow"** button on the GitHub Actions tab.
+
 ## 📦 Requirements
 
 The script uses:
@@ -76,5 +74,6 @@ Install with:
 ```bash
 pip install -r requirements.txt
 playwright install --with-deps
+
 
 
