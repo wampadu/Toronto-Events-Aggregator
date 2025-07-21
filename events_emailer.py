@@ -9,6 +9,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from playwright_stealth import stealth_async
+
 
 # === Calculate Upcoming Friday–Sunday Dates ===
 def get_upcoming_weekend_dates():
@@ -546,12 +548,16 @@ async def aggregate_events():
     dates = get_upcoming_weekend_dates()
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
+async def aggregate_events():
+    from playwright.async_api import async_playwright
+    import os
+
+    dates = get_upcoming_weekend_dates()
+    print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
+    all_events = []
 
     async with async_playwright() as p:
-        # 🎯 Launch headless browser (for GitHub Actions compatibility)
         browser = await p.chromium.launch(headless=True)
-
-        # 🌐 Shared browser context with anti-bot tweaks
         context = await browser.new_context(
             geolocation={"latitude": 43.6532, "longitude": -79.3832},
             permissions=["geolocation"],
@@ -560,33 +566,29 @@ async def aggregate_events():
             locale="en-US",
             timezone_id="America/Toronto"
         )
-
-        # 🚫 Block navigator.webdriver and spoof language/plugins
         page = await context.new_page()
+
+        # 🕵️ Stealth evasion tweaks
         await page.add_init_script('Object.defineProperty(navigator, "webdriver", { get: () => undefined })')
         await page.add_init_script("""
             () => {
                 Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
                 Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+                window.chrome = { runtime: {} };
             }
         """)
         await page.set_extra_http_headers({
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://www.google.com/",
             "Upgrade-Insecure-Requests": "1",
-            "DNT": "1",
+            "DNT": "1"
         })
 
-        # === Scrapers ===
-        # all_events += await scrape_eventbrite(page)
-        # all_events += await scrape_fever(page)
-        # all_events += await scrape_meetup(page)
-        # all_events += await scrape_blogto(page)
+        # 👇 Run only Ticketmaster scraping for now
         all_events += await scrape_ticketmaster(page)
-
         await browser.close()
 
-    # ✅ De-duplicate events by title
+    # ✅ Deduplicate by title
     seen_titles = set()
     deduped_events = []
     for event in all_events:
@@ -595,13 +597,11 @@ async def aggregate_events():
             seen_titles.add(title_key)
             deduped_events.append(event)
 
-    # 💾 Save HTML output
     html_output = generate_html(deduped_events)
     with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
         f.write(html_output)
     print("✅ File saved: weekend_events_toronto.html")
 
-    # 📧 Send email with attachment
     send_email_with_attachment(
         to_email=os.getenv("EMAIL_TO"),
         subject=f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
