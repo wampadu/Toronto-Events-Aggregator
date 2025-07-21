@@ -454,9 +454,9 @@ async def scrape_ticketmaster(page):
         except Exception as e:
             print("⚠️ Error extracting event:", e)
 
-    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")
-"""    
+    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")   
     return events
+""" 
 
 async def scrape_blogto(page):
     print("🔍 Scraping BlogTO...")
