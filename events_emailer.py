@@ -377,6 +377,7 @@ async def scrape_ticketmaster(page):
 
     await input_box.click()
     await asyncio.sleep(4)
+    await input_box.click()
     print("🔄 Scrolling by clicking 'Show More'...")
 
     # 🔁 Scroll logic
