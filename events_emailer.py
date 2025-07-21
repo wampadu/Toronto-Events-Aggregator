@@ -346,6 +346,7 @@ async def scrape_meetup(page):
     print(f"✅ Finished scraping. Found {len(events)} events.")
     return events
 
+"""
 async def scrape_ticketmaster(page):
     print("🔍 Scraping Ticketmaster...")
     events = []
@@ -359,7 +360,6 @@ async def scrape_ticketmaster(page):
     await asyncio.sleep(4)
     
     print(await page.content())
-"""
 
     # ⌨️ Type and select location
     #await page.wait_for_selector('input[aria-label="City or Postal Code"]')
@@ -537,6 +537,15 @@ async def aggregate_events():
         browser = await p.chromium.launch(headless=True, slow_mo=50)
         page = await browser.new_page()
 
+        print("🔍 Scraping Ticketmaster...")
+        events = []
+        dates = get_upcoming_weekend_dates()
+        start_str = dates[0].strftime("%Y-%m-%d")
+        end_str = dates[-1].strftime("%Y-%m-%d")
+        url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
+        await page.goto(url)
+        print(await page.content())
+    
         #all_events += await scrape_eventbrite(page)
         #all_events += await scrape_fever(page)
         #all_events += await scrape_meetup(page)
