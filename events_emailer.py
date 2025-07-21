@@ -237,7 +237,7 @@ async def scrape_eventbrite(page):
                 price_el = await card.query_selector("div[class*='priceWrapper'] p")
                 price = (await price_el.inner_text()).strip() if price_el else "Free"
 
-                if any(d in date_text for d in target_dates) and title not in printed_titles:
+                if title not in printed_titles:
                     printed_titles.add(title)
                     events.append({
                         "title": title,
@@ -350,47 +350,108 @@ async def scrape_meetup(page):
 async def scrape_ticketmaster(page):
     print("🔍 Scraping Ticketmaster...")
     events = []
+
+    # Generate dynamic date range
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
     await page.goto(url)
-    await asyncio.sleep(5)
+    await asyncio.sleep(4)
 
-    while True:
-        try:
-            show_more = await page.query_selector('button.PaginationButton__ShowMoreButton-sc-1npc1aj-3')
-            if show_more:
-                await show_more.click()
-                await asyncio.sleep(3)
-            else:
-                break
-        except:
-            break
+    # ⌨️ Type and select location
+    await page.wait_for_selector('input[aria-label="City or Postal Code"]')
+    input_box = await page.query_selector('input[aria-label="City or Postal Code"]')
+    await input_box.click()
+    await input_box.fill("")
+    await input_box.type("Midtown Toronto, ON")
+    await asyncio.sleep(2.5)
 
-    cards = await page.query_selector_all("li.sc-a4c9d98c-1")
-    for card in cards:
+    # ✅ Click the second suggestion (Midtown)
+    suggestions = await page.query_selector_all('[data-reach-combobox-option]')
+    if len(suggestions) >= 2:
+        await suggestions[1].click()
+    else:
+        print("❌ Location option not found.")
+        return []
+
+    await input_box.click()
+    await asyncio.sleep(4)
+    print("🔄 Scrolling by clicking 'Show More'...")
+
+    # 🔁 Scroll logic
+    stop_scrolling = False
+    retries = 0
+    last_event_count = 0
+
+    while not stop_scrolling and retries < 5:
+        more_btn = await page.query_selector('button.PaginationButton__ShowMoreButton-sc-1npc1aj-3')
+        if more_btn:
+            await more_btn.click()
+            await asyncio.sleep(3)
+        else:
+            retries += 1
+            await asyncio.sleep(2)
+
+        cards = await page.query_selector_all('li.sc-a4c9d98c-1')
+        print(f"🧾 Currently loaded: {len(cards)} events.")
+
+        if len(cards) == last_event_count:
+            retries += 1
+        else:
+            retries = 0
+        last_event_count = len(cards)
+
+        # 🛑 Stop if last event is no longer in Toronto
+        if cards:
+            last_event_text = await cards[-1].inner_text()
+            if "Toronto, ON" not in last_event_text:
+                print("🛑 Reached non-Toronto events. Stopping scroll.")
+                stop_scrolling = True
+
+    print("✅ Finished scrolling.")
+
+    # 🧾 Parse all cards
+    final_cards = await page.query_selector_all('li.sc-a4c9d98c-1')
+
+    for card in final_cards:
         try:
             full_text = await card.inner_text()
             if "Toronto, ON" not in full_text:
                 continue
-            title = await card.query_selector("span.sc-cce7ae2b-6")
-            title = await title.text_content() if title else "N/A"
-            month = await card.query_selector("div.sc-d4c18b64-1 span")
-            day = await card.query_selector("div.sc-d4c18b64-2 span")
-            time = await card.query_selector("span.sc-5ae165d4-0")
-            date = f"{await month.text_content()} {await day.text_content()} {await time.text_content()}" if month and day and time else "N/A"
-            link = await card.query_selector("a[data-testid='event-list-link']")
-            url = await link.get_attribute("href") if link else ""
-            img = await card.query_selector("img")
-            image = await img.get_attribute("src") if img else ""
+
+            title_el = await card.query_selector('span.sc-cce7ae2b-6')
+            title = await title_el.text_content() if title_el else "N/A"
+
+            month_el = await card.query_selector('div.sc-d4c18b64-1 span')
+            day_el = await card.query_selector('div.sc-d4c18b64-2 span')
+            time_el = await card.query_selector('span.sc-5ae165d4-0')
+
+            month = await month_el.text_content() if month_el else ""
+            day = await day_el.text_content() if day_el else ""
+            time = await time_el.text_content() if time_el else ""
+            date = f"{month} {day} {time}".strip() if month or day else "N/A"
+
+            link_el = await card.query_selector('a[data-testid="event-list-link"]')
+            link = await link_el.get_attribute("href") if link_el else ""
+
+            img_el = await card.query_selector('img')
+            img_url = await img_el.get_attribute("src") if img_el else ""
+
             events.append({
-                "title": title, "date": date, "description": "",
-                "image": image, "url": url, "price": "N/A", "source": "Ticketmaster"
+                "title": title,
+                "date": date,
+                "description": "",
+                "image": img_url,
+                "url": link,
+                "price": "N/A",
+                "source": "Ticketmaster"
             })
-        except:
-            continue
-    print(f"✅ Finished scraping. Found {len(events)} events.")
+
+        except Exception as e:
+            print("⚠️ Error extracting event:", e)
+
+    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")
     return events
 
 async def scrape_blogto(page):
