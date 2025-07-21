@@ -553,47 +553,67 @@ async def aggregate_events():
     dates = get_upcoming_weekend_dates()
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
+
     async with async_playwright() as p:
-        #browser = await p.chromium.launch(headless=True, slow_mo=50)
-        #page = await browser.new_page()
-        
-        browser = await p.chromium.launch(headless=True, slow_mo=50)
-        context = await browser.new_context(
-        geolocation={"latitude": 43.6532, "longitude": -79.3832},
-        permissions=["geolocation"],
-        viewport={"width": 1280, "height": 800}
+        # 👥 General browser for most sites (headless = True)
+        browser_general = await p.chromium.launch(headless=True)
+        context_general = await browser_general.new_context(
+            geolocation={"latitude": 43.6532, "longitude": -79.3832},
+            permissions=["geolocation"],
+            viewport={"width": 1280, "height": 800}
         )
-        page = await context.new_page()
-    
-        #all_events += await scrape_eventbrite(page)
-        #all_events += await scrape_fever(page)
-        #all_events += await scrape_meetup(page)
-        all_events += await scrape_ticketmaster(p)
-        #all_events += await scrape_blogto(page)
+        page_general = await context_general.new_page()
 
-        await browser.close()
+        # Uncomment other sources as needed
+        all_events += await scrape_eventbrite(page_general)
+        all_events += await scrape_fever(page_general)
+        all_events += await scrape_meetup(page_general)
+        all_events += await scrape_blogto(page_general)
 
-        # 🧹 De-duplicate by title only
-        seen_titles = set()
-        deduped_events = []
-        for event in all_events:
-            title_key = event['title'].strip().lower()
-            if title_key not in seen_titles:
-                seen_titles.add(title_key)
-                deduped_events.append(event)
-        all_events = deduped_events
+        await browser_general.close()
 
+        # 🎯 Dedicated browser for Ticketmaster with headless=False
+        browser_tm = await p.chromium.launch(headless=False, slow_mo=50)
+        context_tm = await browser_tm.new_context(
+            geolocation={"latitude": 43.6532, "longitude": -79.3832},
+            permissions=["geolocation"],
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            locale="en-US",
+            timezone_id="America/Toronto"
+        )
+        page_tm = await context_tm.new_page()
 
-    html_output = generate_html(all_events)
+        # 🕵️ Stealth tweaks for bot evasion
+        await page_tm.add_init_script('Object.defineProperty(navigator, "webdriver", { get: () => undefined })')
+        await page_tm.add_init_script("""
+            () => {
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+            }
+        """)
+
+        all_events += await scrape_ticketmaster(page_tm)
+        await browser_tm.close()
+
+    # ✅ De-duplicate by title
+    seen_titles = set()
+    deduped_events = []
+    for event in all_events:
+        title_key = event['title'].strip().lower()
+        if title_key not in seen_titles:
+            seen_titles.add(title_key)
+            deduped_events.append(event)
+
+    html_output = generate_html(deduped_events)
     with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
         f.write(html_output)
     print("✅ File saved: weekend_events_toronto.html")
 
-
-    # Send the email
+    # 📧 Send email
     send_email_with_attachment(
         to_email=os.getenv("EMAIL_TO"),
-        subject = f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
+        subject=f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
         html_path="weekend_events_toronto.html"
     )
 
