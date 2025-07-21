@@ -237,17 +237,16 @@ async def scrape_eventbrite(page):
                 price_el = await card.query_selector("div[class*='priceWrapper'] p")
                 price = (await price_el.inner_text()).strip() if price_el else "Free"
 
-                if title not in printed_titles:
-                    printed_titles.add(title)
-                    events.append({
-                        "title": title,
-                        "date": date_text,
-                        "description": "",
-                        "image": img_url,
-                        "url": link,
-                        "price": price,
-                        "source": "Eventbrite"
-                    })
+                printed_titles.add(title)
+                events.append({
+                    "title": title,
+                    "date": date_text,
+                    "description": "",
+                    "image": img_url,
+                    "url": link,
+                    "price": price,
+                    "source": "Eventbrite"
+                })
             except Exception as e:
                 print("⚠️ Error extracting event:", e)
 
