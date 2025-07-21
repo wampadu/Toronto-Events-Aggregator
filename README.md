@@ -28,7 +28,7 @@ It generates an interactive, searchable HTML table and emails the file to you we
 This script is currently set to scrape events **two weekends from now** (not for the upcoming weekend).  
 The idea is to give you **more time to plan, invite friends, and book tickets early**.
 Want it to scrape only this upcoming weekend?
-In `events_emailer.py`, find this line in the `get_upcoming_weekend_dates()` function:
+In `events_emailer.py`, find this line:
 ```python
 friday = today + timedelta(days=days_until_friday + 7)
 And replace it with:
