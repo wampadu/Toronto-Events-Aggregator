@@ -347,57 +347,87 @@ async def scrape_meetup(page):
     return events
 
 async def scrape_ticketmaster(page):
-    
     print("🔍 Scraping Ticketmaster...")
-    events = []
-    # Generate dynamic date range
-    dates = get_upcoming_weekend_dates()
-    start_str = dates[0].strftime("%Y-%m-%d")
-    end_str = dates[-1].strftime("%Y-%m-%d")
-    url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
-    
-    # Set extra HTTP headers
+
+    # Stealth and anti-bot
+    await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => undefined})')
+    await page.add_init_script("""
+        Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+    """)
+
     await page.set_extra_http_headers({
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.google.com/",
         "Upgrade-Insecure-Requests": "1",
         "DNT": "1",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not:A-Brand\";v=\"99\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\""
     })
 
-    # Set viewport and emulate media
-    await page.set_viewport_size({"width": 1280, "height": 800})
-    await page.emulate_media(media="screen")
-
-    # Patch webdriver property to undefined
-    await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => undefined})')
+    # Compose URL (dates dynamic)
+    dates = get_upcoming_weekend_dates()
+    start_str = dates[0].strftime("%Y-%m-%d")
+    end_str = dates[-1].strftime("%Y-%m-%d")
+    url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
 
     await page.goto(url)
-    await asyncio.sleep(4)
+    await asyncio.sleep(6)
+    await page.mouse.move(100, 200)
+    await asyncio.sleep(1)
+    await page.mouse.move(200, 300)
+    await asyncio.sleep(1)
 
-     print(await page.content())
-    # ⌨️ Type and select location
-    await page.wait_for_selector('input[aria-label="City or Postal Code"]')
-    input_box = await page.query_selector("input[placeholder*='Postal Code'], input[aria-label*='Postal Code'], input")
-    await input_box.click()
-    await input_box.fill("")
-    await input_box.type("Midtown Toronto, ON")
-    await asyncio.sleep(2.5)
+    # Flexible selectors for input
+    selectors = [
+        'input[aria-label*="City"]',
+        'input[aria-label*="Postal"]',
+        'input[placeholder*="City"]',
+        'input[placeholder*="Postal"]',
+        'input[type="text"]'
+    ]
+    found = False
+    for selector in selectors:
+        try:
+            await page.wait_for_selector(selector, timeout=8000)
+            input_box = await page.query_selector(selector)
+            if input_box:
+                found = True
+                break
+        except Exception:
+            continue
 
-    # ✅ Click the second suggestion (Midtown)
-    suggestions = await page.query_selector_all('[data-reach-combobox-option]')
-    if len(suggestions) >= 2:
-        await suggestions[1].click()
-    else:
-        print("❌ Location option not found.")
+    if not found:
+        content = await page.content()
+        print("DEBUG: Could not find location input box. Partial HTML dump:\n", content[:2000])
         return []
 
     await input_box.click()
+    await input_box.fill("")
+    await asyncio.sleep(1.2)
+    await input_box.type("Midtown Toronto, ON")
+    await asyncio.sleep(2.5)
+
+    # Click suggestion (if present)
+    try:
+        suggestions = await page.query_selector_all('[data-reach-combobox-option]')
+        if len(suggestions) >= 2:
+            await suggestions[1].click()
+        elif suggestions:
+            await suggestions[0].click()
+        else:
+            print("❌ Location option not found.")
+            return []
+    except Exception:
+        print("❌ Location option not found (exception).")
+        return []
+
     await asyncio.sleep(4)
-    
+
     print("🔄 Scrolling by clicking 'Show More'...")
 
-    # 🔁 Scroll logic
     stop_scrolling = False
     retries = 0
     last_event_count = 0
@@ -420,7 +450,6 @@ async def scrape_ticketmaster(page):
             retries = 0
         last_event_count = len(cards)
 
-        # 🛑 Stop if last event is no longer in Toronto
         if cards:
             last_event_text = await cards[-1].inner_text()
             if "Toronto, ON" not in last_event_text:
@@ -429,9 +458,9 @@ async def scrape_ticketmaster(page):
 
     print("✅ Finished scrolling.")
 
-    # 🧾 Parse all cards
     final_cards = await page.query_selector_all('li.sc-a4c9d98c-1')
 
+    events = []
     for card in final_cards:
         try:
             full_text = await card.inner_text()
@@ -469,7 +498,7 @@ async def scrape_ticketmaster(page):
         except Exception as e:
             print("⚠️ Error extracting event:", e)
 
-    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")   
+    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")
     return events
 
 async def scrape_blogto(page):
@@ -548,8 +577,16 @@ async def aggregate_events():
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
     async with async_playwright() as p:
+        #browser = await p.chromium.launch(headless=True, slow_mo=50)
+        #page = await browser.new_page()
+        
         browser = await p.chromium.launch(headless=True, slow_mo=50)
-        page = await browser.new_page()
+        context = await browser.new_context(
+        geolocation={"latitude": 43.6532, "longitude": -79.3832},
+        permissions=["geolocation"],
+        viewport={"width": 1280, "height": 800}
+        )
+        page = await context.new_page()
     
         #all_events += await scrape_eventbrite(page)
         #all_events += await scrape_fever(page)
