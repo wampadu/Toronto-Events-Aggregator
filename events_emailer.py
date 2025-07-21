@@ -1,5 +1,6 @@
 import os
 import asyncio
+import random
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
@@ -355,7 +356,6 @@ async def scrape_ticketmaster(page):
         Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
         Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
     """)
-
     await page.set_extra_http_headers({
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.google.com/",
@@ -367,18 +367,27 @@ async def scrape_ticketmaster(page):
         "sec-ch-ua-platform": "\"Windows\""
     })
 
-    # Compose URL (dates dynamic)
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
 
     await page.goto(url)
-    await asyncio.sleep(6)
-    await page.mouse.move(100, 200)
-    await asyncio.sleep(1)
-    await page.mouse.move(200, 300)
-    await asyncio.sleep(1)
+    await asyncio.sleep(random.uniform(5, 7))
+
+    # Check for anti-bot page
+    content = await page.content()
+    if "Let's Get Your Identity Verified" in content or "Your browser hit a snag" in content:
+        print("❌ Blocked by Ticketmaster anti-bot page.")
+        return []
+
+    # Randomized mouse movement
+    for _ in range(3):
+        await page.mouse.move(
+            random.randint(100, 400),
+            random.randint(200, 700)
+        )
+        await asyncio.sleep(random.uniform(0.8, 1.8))
 
     # Flexible selectors for input
     selectors = [
@@ -406,9 +415,9 @@ async def scrape_ticketmaster(page):
 
     await input_box.click()
     await input_box.fill("")
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(random.uniform(1.0, 1.5))
     await input_box.type("Midtown Toronto, ON")
-    await asyncio.sleep(2.5)
+    await asyncio.sleep(random.uniform(2.0, 3.0))
 
     # Click suggestion (if present)
     try:
@@ -423,6 +432,8 @@ async def scrape_ticketmaster(page):
     except Exception:
         print("❌ Location option not found (exception).")
         return []
+
+    await asyncio.sleep(random.uniform(3, 5))
 
     await asyncio.sleep(4)
 
