@@ -346,11 +346,16 @@ async def scrape_meetup(page):
     print(f"✅ Finished scraping. Found {len(events)} events.")
     return events
 
-"""
 async def scrape_ticketmaster(page):
     print("🔍 Scraping Ticketmaster...")
-    events = []
 
+    # Set a realistic User-Agent and extra headers
+    await page.set_extra_http_headers({
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+})
+
+    events = []
     # Generate dynamic date range
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
@@ -379,7 +384,7 @@ async def scrape_ticketmaster(page):
 
     await input_box.click()
     await asyncio.sleep(4)
-    await input_box.click()
+    
     print("🔄 Scrolling by clicking 'Show More'...")
 
     # 🔁 Scroll logic
@@ -456,7 +461,6 @@ async def scrape_ticketmaster(page):
 
     print(f"✅ Finished scraping. Found {len(events)} Toronto events.")   
     return events
-""" 
 
 async def scrape_blogto(page):
     print("🔍 Scraping BlogTO...")
@@ -536,15 +540,6 @@ async def aggregate_events():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, slow_mo=50)
         page = await browser.new_page()
-
-        print("🔍 Scraping Ticketmaster...")
-        events = []
-        dates = get_upcoming_weekend_dates()
-        start_str = dates[0].strftime("%Y-%m-%d")
-        end_str = dates[-1].strftime("%Y-%m-%d")
-        url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
-        await page.goto(url)
-        print(await page.content())
     
         #all_events += await scrape_eventbrite(page)
         #all_events += await scrape_fever(page)
