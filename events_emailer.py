@@ -9,7 +9,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from playwright_stealth import stealth_async
+from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
 
 
 # === Calculate Upcoming Friday–Sunday Dates ===
@@ -347,7 +348,7 @@ async def scrape_meetup(page):
     print(f"✅ Finished scraping. Found {len(events)} events.")
     return events
 
-async def scrape_ticketmaster(page):
+def scrape_ticketmaster(page):
     
     print("🔍 Scraping Ticketmaster...")
     events = []
@@ -544,21 +545,14 @@ def send_email_with_attachment(to_email, subject, html_path):
     print("📧 Email sent!")
 
 # === Main Runner ===
-async def aggregate_events():
-    dates = get_upcoming_weekend_dates()
-    print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
-    all_events = []
-async def aggregate_events():
-    from playwright.async_api import async_playwright
-    import os
-
+def aggregate_events():
     dates = get_upcoming_weekend_dates()
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
             geolocation={"latitude": 43.6532, "longitude": -79.3832},
             permissions=["geolocation"],
             viewport={"width": 1280, "height": 800},
@@ -566,29 +560,20 @@ async def aggregate_events():
             locale="en-US",
             timezone_id="America/Toronto"
         )
-        page = await context.new_page()
+        page = context.new_page()
+        stealth_sync(page)
 
-        # 🕵️ Stealth evasion tweaks
-        await page.add_init_script('Object.defineProperty(navigator, "webdriver", { get: () => undefined })')
-        await page.add_init_script("""
-            () => {
-                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-                window.chrome = { runtime: {} };
-            }
-        """)
-        await page.set_extra_http_headers({
+        page.set_extra_http_headers({
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://www.google.com/",
             "Upgrade-Insecure-Requests": "1",
             "DNT": "1"
         })
 
-        # 👇 Run only Ticketmaster scraping for now
-        all_events += await scrape_ticketmaster(page)
-        await browser.close()
+        all_events += scrape_ticketmaster(page)
+        browser.close()
 
-    # ✅ Deduplicate by title
+    # Deduplicate events by title
     seen_titles = set()
     deduped_events = []
     for event in all_events:
