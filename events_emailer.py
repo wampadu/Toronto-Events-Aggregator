@@ -548,26 +548,11 @@ async def aggregate_events():
     all_events = []
 
     async with async_playwright() as p:
-        # 👥 General browser for most sites (headless = True)
-        browser_general = await p.chromium.launch(headless=True)
-        context_general = await browser_general.new_context(
-            geolocation={"latitude": 43.6532, "longitude": -79.3832},
-            permissions=["geolocation"],
-            viewport={"width": 1280, "height": 800}
-        )
-        page_general = await context_general.new_page()
+        # 🎯 Launch headless browser (GitHub-compatible)
+        browser = await p.chromium.launch(headless=True)
 
-        # Uncomment other sources as needed
-        #all_events += await scrape_eventbrite(page_general)
-        #all_events += await scrape_fever(page_general)
-        #all_events += await scrape_meetup(page_general)
-        #all_events += await scrape_blogto(page_general)
-
-        await browser_general.close()
-
-        # 🎯 Dedicated browser for Ticketmaster with headless=False
-        browser_tm = await p.chromium.launch(headless=False, slow_mo=50)
-        context_tm = await browser_tm.new_context(
+        # === Shared anti-bot context settings ===
+        context = await browser.new_context(
             geolocation={"latitude": 43.6532, "longitude": -79.3832},
             permissions=["geolocation"],
             viewport={"width": 1280, "height": 800},
@@ -575,19 +560,31 @@ async def aggregate_events():
             locale="en-US",
             timezone_id="America/Toronto"
         )
-        page_tm = await context_tm.new_page()
 
-        # 🕵️ Stealth tweaks for bot evasion
-        await page_tm.add_init_script('Object.defineProperty(navigator, "webdriver", { get: () => undefined })')
-        await page_tm.add_init_script("""
+        # 🔐 Shared page with stealth tweaks
+        page = await context.new_page()
+        await page.add_init_script('Object.defineProperty(navigator, "webdriver", { get: () => undefined })')
+        await page.add_init_script("""
             () => {
                 Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
                 Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
             }
         """)
+        await page.set_extra_http_headers({
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/",
+            "Upgrade-Insecure-Requests": "1",
+            "DNT": "1",
+        })
 
-        all_events += await scrape_ticketmaster(page_tm)
-        await browser_tm.close()
+        # === Scrapers ===
+        # all_events += await scrape_eventbrite(page)
+        # all_events += await scrape_fever(page)
+        # all_events += await scrape_meetup(page)
+        # all_events += await scrape_blogto(page)
+        all_events += await scrape_ticketmaster(page)
+
+        await browser.close()
 
     # ✅ De-duplicate by title
     seen_titles = set()
@@ -609,6 +606,7 @@ async def aggregate_events():
         subject=f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
         html_path="weekend_events_toronto.html"
     )
+
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
