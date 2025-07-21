@@ -560,6 +560,7 @@ def aggregate_events():
             locale="en-US",
             timezone_id="America/Toronto"
         )
+
         page = context.new_page()
         stealth_sync(page)
 
@@ -571,6 +572,7 @@ def aggregate_events():
         })
 
         all_events += scrape_ticketmaster(page)
+
         browser.close()
 
     # Deduplicate events by title
