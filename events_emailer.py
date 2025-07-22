@@ -487,7 +487,7 @@ async def aggregate_events():
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False, slow_mo=50)
+        browser = await p.chromium.launch(headless=True, slow_mo=50)
         page = await browser.new_page()
         #all_events += await scrape_eventbrite(page)
         #all_events += await scrape_fever(page)
