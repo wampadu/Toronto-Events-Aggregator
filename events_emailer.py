@@ -351,10 +351,11 @@ async def scrape_meetup(page):
 async def scrape_stubhub(page):
     print("🔍 Scraping StubHub...")
 
+    # Step 1: Go to Explore
     await page.goto("https://www.stubhub.ca/explore", timeout=60000)
     await page.wait_for_timeout(3000)
 
-    # Open location dropdown and search for Toronto
+    # Step 2: Set location to Toronto
     try:
         await page.click("div[role='combobox']", timeout=5000)
         await page.wait_for_selector("input[placeholder='Search location']", timeout=10000)
@@ -369,15 +370,65 @@ async def scrape_stubhub(page):
         await page.wait_for_timeout(5000)
     except Exception as e:
         print(f"❌ Failed to select Toronto location: {e}")
+        #return []
+
+    # Step 3: Open Date dropdown
+    try:
+        await page.click("div[aria-label='Filter by date']")
+        await page.click("[role='dialog'] > div > div:last-child", timeout=3000)
+        await page.wait_for_timeout(2000)
+    except Exception as e:
+        print(f"❌ Failed to open or click Custom Dates: {e}")
         return []
 
-    # Wait for cards to load
+    # Step 4: Click the correct date range in calendar
+    dates = get_upcoming_weekend_dates()
+    start_str = dates[0].strftime('%a %b %d %Y')  # e.g. 'Fri Aug 01 2025'
+    end_str = dates[-1].strftime('%a %b %d %Y')    # e.g. 'Sun Aug 03 2025'
+
+    # click "next month" if August is not shown
+    for i in range(3):
+        if not await page.query_selector(f"[aria-label='{start_str}']"):
+            next_btn = await page.query_selector("button[aria-label='Next Month']")
+            if next_btn:
+                await next_btn.click()
+                await page.wait_for_timeout(1000)
+        else:
+            break
+
+    try:
+        await page.click(f"[aria-label='{start_str}']")
+        await page.wait_for_timeout(300)
+        await page.click(f"[aria-label='{end_str}']")
+        await page.wait_for_timeout(2000)
+    except Exception as e:
+        print(f"❌ Failed selecting dates {start_str} to {end_str}: {e}")
+        return []
+
+    # Step 5: Load all listings via scroll + "Show More"
+    max_scrolls = 15
+    for _ in range(max_scrolls):
+        await page.mouse.wheel(0, 8000)
+        await page.wait_for_timeout(1500)
+
+        show_more = await page.query_selector("button.sc-ikkxIA.dplCTc")
+        if show_more:
+            try:
+                await show_more.click()
+                await page.wait_for_timeout(3000)
+            except:
+                break
+        else:
+            break
+
+    # Step 5: Wait for event cards
     try:
         await page.wait_for_selector("li > div.sc-38c7e8f1-3", timeout=10000)
     except:
         print("❌ Event listings not found.")
         return []
 
+    # Step 6: Scrape events
     events = []
     cards = await page.query_selector_all("li > div.sc-38c7e8f1-3")
     for card in cards:
@@ -489,11 +540,11 @@ async def aggregate_events():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, slow_mo=50)
         page = await browser.new_page()
-        #all_events += await scrape_eventbrite(page)
-        #all_events += await scrape_fever(page)
-        #all_events += await scrape_meetup(page)
+        all_events += await scrape_eventbrite(page)
+        all_events += await scrape_fever(page)
+        all_events += await scrape_meetup(page)
         all_events += await scrape_stubhub(page)
-        #all_events += await scrape_blogto(page)
+        all_events += await scrape_blogto(page)
 
         await browser.close()
 
