@@ -4,13 +4,13 @@ import random
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import calendar
 import html
+import time
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from playwright.sync_api import sync_playwright
-from playwright_stealth import stealth_sync
 
 
 # === Calculate Upcoming Friday–Sunday Dates ===
@@ -348,131 +348,68 @@ async def scrape_meetup(page):
     print(f"✅ Finished scraping. Found {len(events)} events.")
     return events
 
-def scrape_ticketmaster(page):
-    
-    print("🔍 Scraping Ticketmaster...")
-    events = []
-    # Generate dynamic date range
-    dates = get_upcoming_weekend_dates()
-    start_str = dates[0].strftime("%Y-%m-%d")
-    end_str = dates[-1].strftime("%Y-%m-%d")
-    url = f"https://www.ticketmaster.ca/search?startDate={start_str}&endDate={end_str}&sort=date"
-    
-    # Set extra HTTP headers
-    await page.set_extra_http_headers({
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.google.com/",
-        "Upgrade-Insecure-Requests": "1",
-        "DNT": "1",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    })
+async def scrape_stubhub(page):
+    print("🔍 Scraping StubHub...")
 
-    # Set viewport and emulate media
-    await page.set_viewport_size({"width": 1280, "height": 800})
-    await page.emulate_media(media="screen")
+    await page.goto("https://www.stubhub.ca/explore", timeout=60000)
+    await page.wait_for_timeout(3000)
 
-    # Patch webdriver property to undefined
-    await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => undefined})')
-
-    await page.goto(url)
-    await asyncio.sleep(4)
-
-    print(await page.content())
-    # ⌨️ Type and select location
-    await page.wait_for_selector('input[aria-label="City or Postal Code"]')
-    input_box = await page.query_selector("input[placeholder*='Postal Code'], input[aria-label*='Postal Code'], input")
-    await input_box.click()
-    await input_box.fill("")
-    await input_box.type("Midtown Toronto, ON")
-    await asyncio.sleep(2.5)
-
-    # ✅ Click the second suggestion (Midtown)
-    suggestions = await page.query_selector_all('[data-reach-combobox-option]')
-    if len(suggestions) >= 2:
-        await suggestions[1].click()
-    else:
-        print("❌ Location option not found.")
+    # Open location dropdown and search for Toronto
+    try:
+        await page.click("div[role='combobox']", timeout=5000)
+        await page.wait_for_selector("input[placeholder='Search location']", timeout=10000)
+        await page.fill("input[placeholder='Search location']", "Toronto")
+        await page.wait_for_timeout(2000)
+        toronto_option = await page.query_selector("ul[role='listbox'] li:has-text('Toronto, ON, Canada')")
+        if toronto_option:
+            await toronto_option.click()
+        else:
+            print("❌ 'Toronto, ON, Canada' option not found.")
+            return []
+        await page.wait_for_timeout(5000)
+    except Exception as e:
+        print(f"❌ Failed to select Toronto location: {e}")
         return []
 
-    await input_box.click()
-    await asyncio.sleep(4)
-    
-    print("🔄 Scrolling by clicking 'Show More'...")
+    # Wait for cards to load
+    try:
+        await page.wait_for_selector("li > div.sc-38c7e8f1-3", timeout=10000)
+    except:
+        print("❌ Event listings not found.")
+        return []
 
-    # 🔁 Scroll logic
-    stop_scrolling = False
-    retries = 0
-    last_event_count = 0
-
-    while not stop_scrolling and retries < 5:
-        more_btn = await page.query_selector('button.PaginationButton__ShowMoreButton-sc-1npc1aj-3')
-        if more_btn:
-            await more_btn.click()
-            await asyncio.sleep(3)
-        else:
-            retries += 1
-            await asyncio.sleep(2)
-
-        cards = await page.query_selector_all('li.sc-a4c9d98c-1')
-        print(f"🧾 Currently loaded: {len(cards)} events.")
-
-        if len(cards) == last_event_count:
-            retries += 1
-        else:
-            retries = 0
-        last_event_count = len(cards)
-
-        # 🛑 Stop if last event is no longer in Toronto
-        if cards:
-            last_event_text = await cards[-1].inner_text()
-            if "Toronto, ON" not in last_event_text:
-                print("🛑 Reached non-Toronto events. Stopping scroll.")
-                stop_scrolling = True
-
-    print("✅ Finished scrolling.")
-
-    # 🧾 Parse all cards
-    final_cards = await page.query_selector_all('li.sc-a4c9d98c-1')
-
-    for card in final_cards:
+    events = []
+    cards = await page.query_selector_all("li > div.sc-38c7e8f1-3")
+    for card in cards:
         try:
-            full_text = await card.inner_text()
-            if "Toronto, ON" not in full_text:
-                continue
+            title_el = await card.query_selector("p.sc-38c7e8f1-6")
+            datetime_el = await card.query_selector_all("p.sc-38c7e8f1-8")
+            link_el = await card.query_selector("a")
+            img_el = await card.query_selector("img")
 
-            title_el = await card.query_selector('span.sc-cce7ae2b-6')
-            title = await title_el.text_content() if title_el else "N/A"
-
-            month_el = await card.query_selector('div.sc-d4c18b64-1 span')
-            day_el = await card.query_selector('div.sc-d4c18b64-2 span')
-            time_el = await card.query_selector('span.sc-5ae165d4-0')
-
-            month = await month_el.text_content() if month_el else ""
-            day = await day_el.text_content() if day_el else ""
-            time = await time_el.text_content() if time_el else ""
-            date = f"{month} {day} {time}".strip() if month or day else "N/A"
-
-            link_el = await card.query_selector('a[data-testid="event-list-link"]')
+            title = await title_el.inner_text() if title_el else "N/A"
+            datetime_text = await datetime_el[0].inner_text() if len(datetime_el) > 0 else "N/A"
+            venue = await datetime_el[1].inner_text() if len(datetime_el) > 1 else "N/A"
             link = await link_el.get_attribute("href") if link_el else ""
-
-            img_el = await card.query_selector('img')
-            img_url = await img_el.get_attribute("src") if img_el else ""
+            image = await img_el.get_attribute("src") if img_el else "N/A"
 
             events.append({
-                "title": title,
-                "date": date,
-                "description": "",
-                "image": img_url,
-                "url": link,
+                "source": "StubHub",
+                "title": title.strip(),
+                "date": datetime_text.strip(),
+                "description": venue.strip(),
+                "url": link if link.startswith("http") else f"https://www.stubhub.ca{link}",
                 "price": "N/A",
-                "source": "Ticketmaster"
+                "image": image
             })
-
         except Exception as e:
-            print("⚠️ Error extracting event:", e)
+            print(f"⚠️ Error parsing card: {e}")
+            continue
 
-    print(f"✅ Finished scraping. Found {len(events)} Toronto events.")   
+    print(f"✅ StubHub: Scraped {len(events)} events.")
     return events
+
+
 
 async def scrape_blogto(page):
     print("🔍 Scraping BlogTO...")
@@ -545,57 +482,44 @@ def send_email_with_attachment(to_email, subject, html_path):
     print("📧 Email sent!")
 
 # === Main Runner ===
-def aggregate_events():
+async def aggregate_events():
     dates = get_upcoming_weekend_dates()
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False, slow_mo=50)
+        page = await browser.new_page()
+        #all_events += await scrape_eventbrite(page)
+        #all_events += await scrape_fever(page)
+        #all_events += await scrape_meetup(page)
+        all_events += await scrape_stubhub(page)
+        #all_events += await scrape_blogto(page)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            geolocation={"latitude": 43.6532, "longitude": -79.3832},
-            permissions=["geolocation"],
-            viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            locale="en-US",
-            timezone_id="America/Toronto"
-        )
+        await browser.close()
 
-        page = context.new_page()
-        stealth_sync(page)
+        # 🧹 De-duplicate by title only
+        seen_titles = set()
+        deduped_events = []
+        for event in all_events:
+            title_key = event['title'].strip().lower()
+            if title_key not in seen_titles:
+                seen_titles.add(title_key)
+                deduped_events.append(event)
+        all_events = deduped_events
 
-        page.set_extra_http_headers({
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.google.com/",
-            "Upgrade-Insecure-Requests": "1",
-            "DNT": "1"
-        })
 
-        all_events += scrape_ticketmaster(page)
-
-        browser.close()
-
-    # Deduplicate events by title
-    seen_titles = set()
-    deduped_events = []
-    for event in all_events:
-        title_key = event['title'].strip().lower()
-        if title_key not in seen_titles:
-            seen_titles.add(title_key)
-            deduped_events.append(event)
-
-    html_output = generate_html(deduped_events)
+    html_output = generate_html(all_events)
     with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
         f.write(html_output)
     print("✅ File saved: weekend_events_toronto.html")
 
+
+    # Send the email
     send_email_with_attachment(
         to_email=os.getenv("EMAIL_TO"),
-        subject=f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
+        subject = f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
         html_path="weekend_events_toronto.html"
     )
-
-
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
