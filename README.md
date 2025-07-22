@@ -5,7 +5,7 @@ This Python script scrapes and compiles a list of **Toronto weekend events** (Fr
 - [BlogTO](https://www.blogto.com/events/)
 - [Eventbrite](https://www.eventbrite.ca/)
 - [Meetup](https://www.meetup.com/)
-- [Ticketmaster](https://www.ticketmaster.ca/)
+- [StubHub](https://www.stubhub.ca/)
 - [Fever](https://feverup.com/toronto)
 
 It generates an interactive, searchable HTML table and emails the file to you weekly.
