@@ -205,6 +205,7 @@ async def scrape_eventbrite(page):
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
     await page.goto(url)
+    print(await page.content())
 
     while True:
         print("🔄 Scrolling to load events on current page...")
@@ -546,10 +547,10 @@ async def aggregate_events():
 
         browser = await p.chromium.launch(headless=True, slow_mo=50)
         page = await browser.new_page()
-        all_events += await scrape_fever(page)
-        all_events += await scrape_meetup(page)
-        all_events += await scrape_stubhub(page)
-        all_events += await scrape_blogto(page)
+        #all_events += await scrape_fever(page)
+        #all_events += await scrape_meetup(page)
+        #all_events += await scrape_stubhub(page)
+        #all_events += await scrape_blogto(page)
         await browser.close()
 
         # 🧹 De-duplicate by title only
