@@ -549,6 +549,17 @@ async def aggregate_events():
         "--disable-dev-shm-usage",
         "--start-maximized"]
         )
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/114.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 800},
+            java_script_enabled=True,
+            locale="en-US",
+            bypass_csp=True
+        )
         page = await browser.new_page()
         all_events += await scrape_eventbrite(page)
         await browser.close()
