@@ -540,7 +540,11 @@ async def aggregate_events():
     all_events = []
     async with async_playwright() as p:
 
-        browser = await p.chromium.launch(headless=True, slow_mo=50)
+        browser = await p.chromium.launch(
+        headless=False,
+        slow_mo=50,
+        args=["--disable-blink-features=AutomationControlled"]
+        )
         page = await browser.new_page()
         all_events += await scrape_eventbrite(page)
         await browser.close()
