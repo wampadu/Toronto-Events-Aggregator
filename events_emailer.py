@@ -543,7 +543,11 @@ async def aggregate_events():
         browser = await p.chromium.launch(
         headless=False,
         slow_mo=50,
-        args=["--disable-blink-features=AutomationControlled"]
+        args=["--disable-blink-features=AutomationControlled",
+        "--no-sandbox",
+        "--disable-infobars",
+        "--disable-dev-shm-usage",
+        "--start-maximized"]
         )
         page = await browser.new_page()
         all_events += await scrape_eventbrite(page)
