@@ -1,21 +1,20 @@
-name: Toronto Weekend Events (Cloud Runner)
+name: Toronto Weekend Events - Test
 
 on:
   schedule:
-    - cron: '0 10 * * 5'  # Every Friday at 6:00 AM EST
+    - cron: '0 10 * * 5'  # Every Friday 6:00 AM EST (10:00 UTC)
   workflow_dispatch:
 
 jobs:
   scrape-and-email:
-    name: Scrape & Email on Fresh Cloud VM
-    runs-on: ubicloud-standard-2  # Use Ubicloud's ephemeral runner
+    runs-on: ubuntu-latest  # ✅ GitHub-hosted runner = new IP each time
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
@@ -26,7 +25,7 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps
 
-      - name: Run scraper with virtual display
+      - name: Run script with virtual display
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
