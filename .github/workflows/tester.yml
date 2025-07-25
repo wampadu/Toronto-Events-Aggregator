@@ -1,31 +1,34 @@
-name: StubHub Cloud Scraper
+name: Toronto Weekend Events (Cloud Runner)
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 13 * * FRI'  # every Friday at 9 AM EST
+    - cron: '0 10 * * 5'  # Every Friday at 6:00 AM EST
+  workflow_dispatch:
 
 jobs:
-  run-on-ephemeral:
-    name: Scrape using Ubicloud VM
-    runs-on: ubicloud-standard-2  # Uses Ubicloud's clean VM with fresh IP
+  scrape-and-email:
+    name: Scrape & Email on Fresh Cloud VM
+    runs-on: ubicloud-standard-2  # Use Ubicloud's ephemeral runner
 
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.10
+          python-version: '3.10'
 
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y xvfb
+          sudo apt-get update
+          sudo apt-get install -y xvfb
           pip install -r requirements.txt
+          playwright install --with-deps
 
-      - name: Run scraper
-        run: |
-          echo "📦 Launching scraper..."
-          xvfb-run -a python events_emailer.py
+      - name: Run scraper with virtual display
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
+          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
+        run: xvfb-run -a python events_emailer.py
