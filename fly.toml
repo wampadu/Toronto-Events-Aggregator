@@ -1,0 +1,19 @@
+app = "toronto-events-aggregator"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  GMAIL_USER = "wendyampadu@gmail.com"
+  GMAIL_PASS = "ptdy kmgo eqmc vrey"
+  EMAIL_TO = "wendyampadu@gmail.com"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_start = true
+  auto_stop = true
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
