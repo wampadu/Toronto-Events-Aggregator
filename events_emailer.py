@@ -454,8 +454,8 @@ async def scrape_stubhub(page):
             img_el = await card.query_selector("img")
 
             title = await title_el.inner_text() if title_el else "N/A"
-            datetime_text = await datetime_el[0].inner_text() if len(datetime_el) > 0 else "N/A"
-            venue = await venue_el.inner_text() if venue_el else "N/A"
+            datetime_text = (await datetime_el[0].inner_text()).strip() if datetime_el else "N/A"
+            venue = (await venue_el[0].inner_text()).strip() if venue_el else "N/A"
             link = await link_el.get_attribute("href") if link_el else ""
             image = await img_el.get_attribute("src") if img_el else "N/A"
 
@@ -591,4 +591,5 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
