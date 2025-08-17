@@ -213,7 +213,8 @@ async def scrape_eventbrite(page):
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
-    url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
+    #url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
+	url = f"https://azureserv.com/d/canada--toronto/all-events/?page=1&start_date={start_str}&end_date={end_str}&__cpo=aHR0cHM6Ly93d3cuZXZlbnRicml0ZS5jb20"
     await page.goto(url)
 
     while True:
@@ -590,3 +591,4 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
