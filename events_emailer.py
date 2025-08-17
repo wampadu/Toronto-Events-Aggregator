@@ -17,8 +17,9 @@ from email.mime.application import MIMEApplication
 def get_upcoming_weekend_dates():
     today = datetime.today()
     days_until_friday = (4 - today.weekday()) % 7
-    friday = today + timedelta(days=days_until_friday + 7)
-    return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
+    friday = today + timedelta(days=days_until_friday + 0)
+    return [today + timedelta(days=1), today + timedelta(days=3)]
+    #return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
 
 # === HTML Output ===
 def generate_html(events):
@@ -51,12 +52,12 @@ def generate_html(events):
         <table id="events">
             <thead>
                 <tr>
+		    <th>Image</th>
                     <th>Title</th>
                     <th>Date</th>
                     <th>Price</th>
                     <th>Description</th>
                     <th>Source</th>
-                    <th>Image</th>
                 </tr>
             </thead>
             <tbody>
@@ -67,12 +68,12 @@ def generate_html(events):
             continue
         html_output += f"""
             <tr>
+                <td>{f'<img src="{html.escape(e["image"])}">' if e.get('image', '').startswith('http') else ''}</td>
                 <td><a href="{html.escape(e['url'])}" target="_blank">{html.escape(e['title'])}</a></td>
                 <td>{html.escape(e.get('date', ''))}</td>
                 <td>{html.escape(e.get('price', ''))}</td>
                 <td>{html.escape(e.get('description', ''))}</td>
                 <td>{html.escape(e.get('source', ''))}</td>
-                <td>{f'<img src="{html.escape(e["image"])}">' if e.get('image', '').startswith('http') else ''}</td>
             </tr>
         """
 
@@ -95,60 +96,69 @@ def generate_html(events):
 
         <script>
         function addFancyRandomEventButtonBelowH1() {
-          const dt = $('#events').DataTable();
-          if (!dt) return console.warn("⚠️ DataTable not ready.");
+                const dt = $('#events').DataTable();
+                if (!dt) return console.warn("⚠️ DataTable not ready.");
 
-          dt.buttons('.random-event').remove();
+                // Track already shown events
+                let shownIndices = [];
 
-          dt.button().add(null, {
-            text: '🎲 Random Event Picker',
-            className: 'random-event btn btn-outline-primary',
-            action: function () {
-              const rows = dt.rows({ search: 'applied' }).nodes();
-              if (!rows.length) return alert("No visible events to pick from.");
-              const randIndex = Math.floor(Math.random() * rows.length);
-              const row = rows[randIndex];
-              const linkEl = row.querySelector("td:first-child a");
-              const imgEl = row.querySelector("td:last-child img");
-              const title = linkEl?.textContent.trim() || "No title";
-              const href = linkEl?.href || "#";
-              const image = imgEl?.src || "";
+                // Remove any existing random button
+                try { dt.buttons('.random-event').remove(); } catch (e) {}
 
-              document.getElementById('random-event-card')?.remove();
+                dt.button().add(null, {
+                        text: '🎲 Random Event Picker',
+                        className: 'random-event btn btn-outline-primary',
+                        action: function () {
+                                const rowsArr = dt.rows({ search: 'applied' }).nodes().toArray();
+                                if (!rowsArr.length) return alert("No visible events to pick from.");
 
-              const card = document.createElement("div");
-              card.id = "random-event-card";
-              card.style = `
-                border: 1px solid #ccc;
-                border-left: 5px solid #007acc;
-                padding: 16px;
-                margin-top: 20px;
-                max-width: 600px;
-                border-radius: 8px;
-                position: relative;
-                background: #f9f9f9;
-                font-family: sans-serif;
-              `;
-              card.innerHTML = `
-                <button style="
-                  position: absolute;
-                  top: 8px;
-                  right: 10px;
-                  background: transparent;
-                  border: none;
-                  font-size: 20px;
-                  cursor: pointer;
-                  color: #999;
-                " onclick="document.getElementById('random-event-card').remove()">×</button>
-                <h3 style="margin: 0 0 10px">🎯 Your Random Pick:</h3>
-                <a href="${href}" target="_blank" style="font-size: 16px; font-weight: bold; color: #007acc;">${title}</a>
-                ${image ? `<div><img src="${image}" style="margin-top: 10px; max-width: 100%; border-radius: 6px;" /></div>` : ''}
-              `;
+                                // Reset if all events have been shown
+                                if (shownIndices.length >= rowsArr.length) {
+                                        shownIndices = [];
+                                        console.log("♻️ All events shown — starting over.");
+                                }
 
-              const h1 = document.querySelector("h1");
-              if (h1) h1.insertAdjacentElement("afterend", card);
-            }
-          });
+                                // Get a random unused index
+                                let randIndex;
+                                do {
+                                        randIndex = Math.floor(Math.random() * rowsArr.length);
+                                } while (shownIndices.includes(randIndex));
+
+                                shownIndices.push(randIndex);
+                                const row = rowsArr[randIndex];
+
+                                // ✅ Title/link is column 2; Image is column 1
+                                const linkEl = row.querySelector("td:nth-child(2) a");
+                                const imgEl  = row.querySelector("td:nth-child(1) img");
+
+                                const title = linkEl?.textContent.trim() || "No title";
+                                const href  = linkEl?.href || "#";
+                                const image = imgEl?.src || "";
+
+                                document.getElementById('random-event-card')?.remove();
+
+                                const card = document.createElement("div");
+                                card.id = "random-event-card";
+                                card.style = `
+                                        border: 1px solid #ccc; border-left: 5px solid #007acc;
+                                        padding: 16px; margin-top: 20px; max-width: 600px;
+                                        border-radius: 8px; position: relative; background: #f9f9f9;
+                                        font-family: sans-serif;
+                                `;
+                                card.innerHTML = `
+                                        <button style="
+                                                position: absolute; top: 8px; right: 10px; background: transparent;
+                                                border: none; font-size: 20px; cursor: pointer; color: #999;"
+                                                onclick="document.getElementById('random-event-card').remove()">×</button>
+                                        <h3 style="margin: 0 0 10px">🎯 Your Random Pick:</h3>
+                                        <a href="${href}" target="_blank" style="font-size: 16px; font-weight: bold; color: #007acc;">${title}</a>
+                                        ${image ? `<div><img src="${image}" style="margin-top: 10px; max-width: 100%; border-radius: 6px;" /></div>` : ''}
+                                `;
+
+                                const h1 = document.querySelector("h1");
+                                if (h1) h1.insertAdjacentElement("afterend", card);
+                        }
+                });
         }
 
         (function waitForTableAndUpgrade(retries = 10) {
@@ -228,8 +238,11 @@ async def scrape_eventbrite(page):
                 title_el = await card.query_selector("h3")
                 title = (await title_el.inner_text()).strip() if title_el else "N/A"
 
-                date_el = await card.query_selector("p:nth-of-type(1)")
+                date_el = await card.query_selector("a + p.Typography_root__487rx")
+                location_el = await card.query_selector(".Typography_root__487rx.Typography_body-md__487rx")
                 date_text = (await date_el.inner_text()).strip() if date_el else "N/A"
+                location_text = (await location_el.inner_text()).strip() if location_el else "N/A"
+                date_text = date_text
 
                 img_el = await card.query_selector("img.event-card-image")
                 img_url = await img_el.get_attribute("src") if img_el else ""
@@ -243,7 +256,7 @@ async def scrape_eventbrite(page):
                 events.append({
                     "title": title,
                     "date": date_text,
-                    "description": "",
+                    "description": location_text,
                     "image": img_url,
                     "url": link,
                     "price": price,
@@ -352,7 +365,7 @@ async def scrape_stubhub(page):
     print("🔍 Scraping StubHub...")
 
     # Step 1: Go to Explore
-    await page.goto("https://www.stubhub.ca/explore", timeout=60000)
+    await page.goto("https://www.stubhub.ca/explore?lat=NDMuNzA0MjkxMDgyNzI4Mjk%3D&lon=LTc5LjQyNDgxODg3Mjg4NTkx", timeout=60000)
     await page.wait_for_timeout(3000)
 
     # Step 2: Set location to Toronto
@@ -423,26 +436,28 @@ async def scrape_stubhub(page):
 
     # Step 5: Wait for event cards
     try:
-        await page.wait_for_selector("li > div.sc-38c7e8f1-3", timeout=10000)
+        await page.wait_for_selector("li > div", timeout=10000)
     except:
         print("❌ Event listings not found.")
         return []
 
     # Step 6: Scrape events
     events = []
-    cards = await page.query_selector_all("li > div.sc-38c7e8f1-3")
+    cards = await page.query_selector_all("li > div")
     for card in cards:
         try:
-            title_el = await card.query_selector("p.sc-38c7e8f1-6")
-            datetime_el = await card.query_selector_all("p.sc-38c7e8f1-8")
+            title_el = await card.query_selector("a p:nth-child(1)")
+            datetime_el = await card.query_selector_all("a p:nth-child(2)")
+            venue_el = await card.query_selector_all("a p:nth-child(3)")
             link_el = await card.query_selector("a")
             img_el = await card.query_selector("img")
 
             title = await title_el.inner_text() if title_el else "N/A"
             datetime_text = await datetime_el[0].inner_text() if len(datetime_el) > 0 else "N/A"
-            venue = await datetime_el[1].inner_text() if len(datetime_el) > 1 else "N/A"
+            venue = await venue_el.inner_text() if venue_el else "N/A"
             link = await link_el.get_attribute("href") if link_el else ""
             image = await img_el.get_attribute("src") if img_el else "N/A"
+
 
             events.append({
                 "source": "StubHub",
@@ -458,6 +473,7 @@ async def scrape_stubhub(page):
             continue
 
     print(f"✅ StubHub: Scraped {len(events)} events.")
+
     return events
 
 
@@ -538,37 +554,14 @@ async def aggregate_events():
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
     async with async_playwright() as p:
-
-        browser = await p.chromium.launch(
-        headless=False,
-        slow_mo=50,
-        args=["--disable-blink-features=AutomationControlled",
-        "--no-sandbox",
-        "--disable-infobars",
-        "--disable-dev-shm-usage",
-        "--start-maximized"]
-        )
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/114.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 800},
-            java_script_enabled=True,
-            locale="en-US",
-            bypass_csp=True
-        )
-        page = await browser.new_page()
-        all_events += await scrape_eventbrite(page)
-        await browser.close()
-
-        browser = await p.chromium.launch(headless=True, slow_mo=50)
+        browser = await p.chromium.launch(headless=False, slow_mo=50)
         page = await browser.new_page()
         all_events += await scrape_fever(page)
         all_events += await scrape_meetup(page)
         all_events += await scrape_stubhub(page)
         all_events += await scrape_blogto(page)
+        all_events += await scrape_eventbrite(page)
+
         await browser.close()
 
         # 🧹 De-duplicate by title only
