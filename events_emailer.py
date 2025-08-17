@@ -568,7 +568,6 @@ async def aggregate_events():
             extra_http_headers={"Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8"},
         )
         page = await page.new_page()
-        all_events += await scrape_eventbrite(eb_page)
         #all_events += await scrape_fever(page)
         #all_events += await scrape_meetup(page)
         #all_events += await scrape_stubhub(page)
@@ -603,6 +602,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
