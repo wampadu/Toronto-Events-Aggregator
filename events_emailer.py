@@ -558,7 +558,17 @@ async def aggregate_events():
     all_events = []
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
-        page = await browser.new_page()
+        #page = await browser.new_page()
+		page = await browser.new_context(
+            proxy={"server": "http://47.251.122.81:8888"},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            locale="en-CA",
+            timezone_id="America/Toronto",
+            viewport={"width": 1366, "height": 768},
+            extra_http_headers={"Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8"},
+        )
+        page = await page.new_page()
+        all_events += await scrape_eventbrite(eb_page)
         #all_events += await scrape_fever(page)
         #all_events += await scrape_meetup(page)
         #all_events += await scrape_stubhub(page)
@@ -593,6 +603,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
