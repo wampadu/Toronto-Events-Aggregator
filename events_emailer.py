@@ -555,11 +555,11 @@ async def aggregate_events():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
         page = await browser.new_page()
-        #all_events += await scrape_fever(page)
-        #all_events += await scrape_meetup(page)
-        #all_events += await scrape_stubhub(page)
-        #all_events += await scrape_blogto(page)
-        all_events += await scrape_eventbrite(page)
+        all_events += await scrape_fever(page)
+        all_events += await scrape_meetup(page)
+        all_events += await scrape_stubhub(page)
+        all_events += await scrape_blogto(page)
+        #all_events += await scrape_eventbrite(page)
         await browser.close()
 
         # 🧹 De-duplicate by title only
@@ -588,6 +588,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
