@@ -559,7 +559,7 @@ async def aggregate_events():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
         #page = await browser.new_page()
-		page = await browser.new_context(
+        page = await browser.new_context(
             proxy={"server": "http://47.251.122.81:8888"},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             locale="en-CA",
@@ -602,6 +602,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
