@@ -17,7 +17,7 @@ def get_upcoming_weekend_dates():
     today = datetime.today()
     days_until_friday = (4 - today.weekday()) % 7
     friday = today + timedelta(days=days_until_friday + 0)
-    return [today + timedelta(days=0), today + timedelta(days=7)]
+    return [today + timedelta(days=3), today + timedelta(days=10)]
     #return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
 
 # === HTML Output ===
@@ -588,6 +588,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
