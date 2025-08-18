@@ -12,21 +12,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
-# === Proxy List ===
-PROXY_LIST = [
-    "https://45.159.218.235:80",
-    "https://108.162.193.190:80",
-    "https://102.177.176.74:80",
-    "https://141.101.123.248:80",
-    "https://45.131.211.131:80",
-    "https://104.16.133.224:80",
-    "https://45.131.6.219:80",
-    "https://104.25.101.79:80",
-    "https://45.131.7.72:80",
-    "https://45.131.4.214:80",
-    "https://154.194.12.51:80"
-]
-
 # === Calculate Upcoming Friday–Sunday Dates ===
 def get_upcoming_weekend_dates():
     today = datetime.today()
@@ -564,43 +549,20 @@ def send_email_with_attachment(to_email, subject, html_path):
         server.send_message(msg)
     print("📧 Email sent!")
 
-
-def get_random_proxy():
-   """Return a random proxy from the list in Playwright format."""
-   proxy = random.choice(PROXY_LIST)
-   # Playwright expects {'server': url}, can also handle socks4/socks5
-   return {"server": proxy}
-
 # === Main Runner ===
 async def aggregate_events():
     dates = get_upcoming_weekend_dates()
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
-	
-	# Add retry logic for proxy failures
-    max_attempts = 5
-    attempt = 0
-    success = False
-
-    while attempt < max_attempts and not success:
-        proxy = get_random_proxy()
-        print(f"🛡️ Using proxy: {proxy['server']} (Attempt {attempt+1}/{max_attempts})")
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=False,
-                    proxy=proxy,
-                    slow_mo=50
-                )
-                page = await browser.new_page()
-                all_events += await scrape_eventbrite(page)
-                # You can add other scrapers here as needed
-                await browser.close()
-                success = True  # If no exception, mark success
-        except Exception as e:
-            print(f"⚠️ Proxy failed: {proxy['server']} — {e}")
-            attempt += 1
-            await asyncio.sleep(2)  # Wait before next attempt
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False, slow_mo=50)
+        page = await browser.new_page()
+        all_events += await scrape_fever(page)
+        all_events += await scrape_meetup(page)
+        all_events += await scrape_stubhub(page)
+        all_events += await scrape_blogto(page)
+        all_events += await scrape_eventbrite(page)
+        await browser.close()
 
         # 🧹 De-duplicate by title only
         seen_titles = set()
@@ -628,6 +590,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
