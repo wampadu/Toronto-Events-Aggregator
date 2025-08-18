@@ -558,7 +558,7 @@ async def aggregate_events():
     async with async_playwright() as p:
         browser = await p.chromium.launch(
         headless=False,
-		#proxy={"server": "http://203.243.63.16:80"},
+		proxy={"server": "http://203.243.63.16:80"},
         slow_mo=50
         )
         page = await browser.new_page()
@@ -595,6 +595,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
