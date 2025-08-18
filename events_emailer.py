@@ -582,12 +582,13 @@ async def aggregate_events():
     # Send the email
     send_email_with_attachment(
         to_email=os.getenv("EMAIL_TO"),
-        subject = f"🎉 Meetup, Stubhub, BlogTO - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
+        subject = f"🎉 Meetup, Stubhub, BlogTO, Fever - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
         html_path="weekend_events_toronto.html"
     )
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
