@@ -17,7 +17,7 @@ def get_upcoming_weekend_dates():
     today = datetime.today()
     days_until_friday = (4 - today.weekday()) % 7
     friday = today + timedelta(days=days_until_friday + 0)
-    return [today + timedelta(days=1), today + timedelta(days=3)]
+    return [today + timedelta(days=0), today + timedelta(days=7)]
     #return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
 
 # === HTML Output ===
@@ -580,14 +580,15 @@ async def aggregate_events():
 
 
     # Send the email
-    #send_email_with_attachment(
-    #    to_email=os.getenv("EMAIL_TO"),
-    #    subject = f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
-    #    html_path="weekend_events_toronto.html"
-    #)
+    send_email_with_attachment(
+        to_email=os.getenv("EMAIL_TO"),
+        subject = f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
+        html_path="weekend_events_toronto.html"
+    )
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
