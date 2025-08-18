@@ -557,11 +557,11 @@ def send_email_with_attachment(to_email, subject, html_path):
     print("📧 Email sent!")
 
 
- def get_random_proxy():
-    """Return a random proxy from the list in Playwright format."""
-    proxy = random.choice(PROXY_LIST)
-    # Playwright expects {'server': url}, can also handle socks4/socks5
-    return {"server": proxy}
+def get_random_proxy():
+   """Return a random proxy from the list in Playwright format."""
+   proxy = random.choice(PROXY_LIST)
+   # Playwright expects {'server': url}, can also handle socks4/socks5
+   return {"server": proxy}
 
 # === Main Runner ===
 async def aggregate_events():
@@ -620,6 +620,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
