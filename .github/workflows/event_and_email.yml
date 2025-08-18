@@ -7,8 +7,10 @@ on:
 
 jobs:
   scrape-and-email:
-    runs-on: ubuntu-latest  # ✅ GitHub-hosted runner = new IP each time
-
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        attempt: [1, 2, 3]
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
