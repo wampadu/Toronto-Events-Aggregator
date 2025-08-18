@@ -213,8 +213,7 @@ async def scrape_eventbrite(page):
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
-    #url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
-    url = f"https://azureserv.com/__cpi.php?s=aXZqM0xLVXZpY3FBbHNKN0VOMy9vUGI0VTJ5T0ozUzc3ZUpnTHFXOGlpZE1KbkIyazZQYXFpZC9rRi9CVlh6WHVuSW9GS0NjM2U4cU53aE5rSXREbCtXWDJNcytjeU5yS2p3emIrVysydlFyWnQ1RldZU0FFYmZLUnNJRXNyekwxQ1haR1k0WGszM0RjQmxiN1liVGh3PT0%3D&r=aHR0cHM6Ly9henVyZXNlcnYuY29tL2QvY2FuYWRhLS10b3JvbnRvL2FsbC1ldmVudHMvP3BhZ2U9MSZzdGFydF9kYXRlPTIwMjUtMDgtMjImZW5kX2RhdGU9MjAyNS0wOC0yNCZfX2Nwbz1hSFIwY0hNNkx5OTNkM2N1WlhabGJuUmljbWwwWlM1allR&__cpo=1"
+    url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
     await page.goto(url)
     content = await page.content()
     print(content)
@@ -602,6 +601,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
