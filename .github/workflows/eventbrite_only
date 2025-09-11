@@ -1,4 +1,4 @@
-name: Eventbrite Only - Toronto Weekend Events
+name: Toronto Weekend Eventbrite Events
 
 on:
   schedule:
