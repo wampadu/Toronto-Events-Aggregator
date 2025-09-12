@@ -14,7 +14,7 @@ from email.mime.application import MIMEApplication
 
 # === Calculate Upcoming Friday–Sunday Dates ===
 def get_upcoming_weekend_dates():
-    #today = datetime.today()
+    today = datetime.today()
     #days_until_friday = (4 - today.weekday()) % 7
     #friday = today + timedelta(days=days_until_friday + 0)
     #return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
@@ -594,6 +594,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
