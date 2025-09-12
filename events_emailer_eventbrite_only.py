@@ -527,9 +527,15 @@ def send_email_with_attachment(to_email, subject, html_path):
     from_email = os.getenv("GMAIL_USER")
     app_password = os.getenv("GMAIL_PASS")  # Use an App Password, not your Gmail password
 
+    # Accept either a string or a list for to_email
+    if isinstance(to_email, str):
+        to_emails = [email.strip() for email in to_email.split(",")]
+    else:
+        to_emails = list(to_email)
+
     msg = MIMEMultipart()
     msg['From'] = from_email
-    msg['To'] = to_email
+    msg['To'] = ", ".join(to_emails)
     msg['Subject'] = subject
 
     # Attach body
@@ -544,7 +550,7 @@ def send_email_with_attachment(to_email, subject, html_path):
     # Send the email
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
         server.login(from_email, app_password)
-        server.send_message(msg)
+        server.send_message(msg, from_addr=from_email, to_addrs=to_emails)
     print("📧 Email sent!")
 
 # === Main Runner ===
@@ -588,6 +594,7 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
 
 
 
