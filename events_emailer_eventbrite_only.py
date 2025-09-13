@@ -1,8 +1,9 @@
+# events_emailer_eventbrite_only.py
+
 import os
 import asyncio
 import html
 import random
-import time
 from datetime import datetime, timedelta
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 from email.mime.multipart import MIMEMultipart
@@ -23,7 +24,7 @@ UAS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 ]
 
-# Block noisy trackers/analytics to speed up load in CI
+# Block noisy trackers/analytics to speed up load (enabled only AFTER first paint)
 BLOCK_URL_PARTS = [
     "googletagmanager", "google-analytics", "doubleclick",
     "hotjar", "segment", "optimizely", "braze", "mixpanel",
@@ -56,6 +57,8 @@ def generate_html(events):
             th, td {{ border: 1px solid #ddd; padding: 8px; vertical-align: top; }}
             img {{ max-width: 140px; border-radius: 6px; }}
             th {{ background: #f7f7f7; }}
+            a {{ color: #0a58ca; text-decoration: none; }}
+            a:hover {{ text-decoration: underline; }}
         </style>
     </head>
     <body>
@@ -121,39 +124,108 @@ async def maybe_dismiss_cookie_banner(page):
 
 async def safe_goto(page, url, retries=RETRIES, base_timeout=NAV_TIMEOUT_MS):
     """
-    Robust navigation with retries/backoff and varied waitUntil strategies.
+    Robust navigation with retries/backoff, permissive 'attached' waits,
+    WAF/interstitial detection, and warm-up hops.
     """
     waits = ["domcontentloaded", "networkidle", "load"]
+    waf_signals = [
+        "Just a moment", "Access denied", "Verify you are human",
+        "unusual traffic", "are you a robot", "temporarily blocked"
+    ]
+
     for attempt in range(1, retries + 1):
         try:
-            await page.goto(url, timeout=base_timeout, wait_until=waits[min(attempt - 1, len(waits) - 1)])
-            await maybe_dismiss_cookie_banner(page)
-            # Wait for either results or an empty-state to show the page settled
-            await page.wait_for_selector(
-                "li [data-testid='search-event'], "
-                "[data-testid='search-event-card'], "
-                "ul[data-spec='search-results'], "
-                "[data-testid*='empty'], [data-automation='empty_state']",
-                timeout=base_timeout
+            await page.goto(
+                url,
+                timeout=base_timeout,
+                wait_until=waits[min(attempt - 1, len(waits) - 1)]
             )
-            return
-        except PWTimeout:
-            if attempt == retries:
-                raise
-            backoff = 1.5 ** attempt
-            print(f"⏳ goto retry {attempt}/{retries} after timeout… sleeping {backoff:.1f}s")
-            await asyncio.sleep(backoff)
+
+            # Quick cookie banner attempt
+            await maybe_dismiss_cookie_banner(page)
+
+            # Let scripts settle a touch
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+
+            # Detect WAF/interstitial
+            try:
+                title = (await page.title()) or ""
+            except Exception:
+                title = ""
+            try:
+                body_snip = (await page.text_content("body")) or ""
+            except Exception:
+                body_snip = ""
+
+            if any(s.lower() in title.lower() for s in waf_signals) or \
+               any(s.lower() in body_snip.lower() for s in waf_signals):
+                raise PWTimeout("WAF/interstitial detected")
+
+            # Do not require visible yet; overlays can hide the list
+            try:
+                await page.wait_for_selector(
+                    "li [data-testid='search-event'], "
+                    "[data-testid='search-event-card'], "
+                    "ul[data-spec='search-results'], "
+                    "[data-testid*='empty'], [data-automation='empty_state']",
+                    timeout=12000,
+                    state="attached"
+                )
+            except Exception:
+                # small scroll to trigger lazy mount
+                try:
+                    await page.evaluate("window.scrollBy(0, 1200)")
+                except Exception:
+                    pass
+                await page.wait_for_selector(
+                    "li [data-testid='search-event'], "
+                    "[data-testid='search-event-card'], "
+                    "ul[data-spec='search-results'], "
+                    "[data-testid*='empty'], [data-automation='empty_state']",
+                    timeout=8000,
+                    state="attached"
+                )
+
+            return  # success
+
         except Exception as e:
             if attempt == retries:
+                # Dump artifacts for debugging
+                try:
+                    html_dump = await page.content()
+                    with open("debug_eventbrite.html", "w", encoding="utf-8") as f:
+                        f.write(html_dump)
+                    await page.screenshot(path="debug_eventbrite.png", full_page=True)
+                    print("🧪 Wrote debug_eventbrite.html and debug_eventbrite.png")
+                except Exception:
+                    pass
                 raise
-            backoff = 1.5 ** attempt
-            print(f"⚠️ goto retry {attempt}/{retries} after error: {e}… sleeping {backoff:.1f}s")
+
+            backoff = min(2.0 * attempt, 6.0)
+            print(f"⏳ goto retry {attempt}/{retries} after error: {e}… sleeping {backoff:.1f}s")
+
+            # Warm-up hops to seed cookies/geo/session
+            try:
+                if attempt == 1:
+                    await page.goto("https://www.eventbrite.ca", timeout=base_timeout, wait_until="domcontentloaded")
+                    await maybe_dismiss_cookie_banner(page)
+                    await page.wait_for_timeout(1000)
+                elif attempt == 2:
+                    await page.goto("https://www.eventbrite.ca/d/canada--toronto/free--events/",
+                                    timeout=base_timeout, wait_until="domcontentloaded")
+                    await page.wait_for_timeout(800)
+            except Exception:
+                pass
+
             await asyncio.sleep(backoff)
 
 async def infinite_scroll(page, max_idle_rounds=6, wheel_px=6000, max_total_rounds=40):
     """
     Scrolls until the page stops growing or caps out to avoid hanging.
-    Uses mouse.wheel where available; falls back to window.scrollBy in pure headless.
+    Uses mouse.wheel where available; falls back to window.scrollBy in headless.
     """
     prev_height = 0
     idle_rounds = 0
@@ -162,9 +234,15 @@ async def infinite_scroll(page, max_idle_rounds=6, wheel_px=6000, max_total_roun
         try:
             await page.mouse.wheel(0, wheel_px)
         except Exception:
-            await page.evaluate("window.scrollBy(0, 6000)")
+            try:
+                await page.evaluate("window.scrollBy(0, 6000)")
+            except Exception:
+                pass
         await asyncio.sleep(1.0)
-        curr_height = await page.evaluate("document.body.scrollHeight")
+        try:
+            curr_height = await page.evaluate("document.body.scrollHeight")
+        except Exception:
+            break
         if curr_height == prev_height:
             idle_rounds += 1
         else:
@@ -179,6 +257,18 @@ def normalize_link(href: str) -> str:
         return "https://www.eventbrite.ca" + href
     return href
 
+async def enable_blocking_after_first_paint(context):
+    """
+    Enable network blocking of heavy analytics/trackers AFTER the first successful paint,
+    to avoid breaking scripts needed to mount the results list.
+    """
+    async def route_handler(route):
+        url = route.request.url
+        if any(part in url for part in BLOCK_URL_PARTS):
+            return await route.abort()
+        return await route.continue_()
+    await context.route("**/*", route_handler)
+
 # ===================== Scraper ====================
 async def scrape_eventbrite(page):
     print("🔍 Scraping Eventbrite…")
@@ -190,6 +280,24 @@ async def scrape_eventbrite(page):
 
     # Navigate robustly
     await safe_goto(page, url)
+
+    # Now that first paint succeeded, enable tracker blocking for the rest
+    await enable_blocking_after_first_paint(page.context)
+
+    # Early probe: ensure list nodes exist (even if overlayed)
+    try:
+        await page.wait_for_selector(
+            "li [data-testid='search-event'], [data-testid='search-event-card'], ul[data-spec='search-results']",
+            timeout=6000,
+            state="attached"
+        )
+    except Exception:
+        # Rare EB quirk: tweak param ordering or broaden once, then continue
+        alt_url = url.replace("&end_date", "&sort=date&end_date")
+        try:
+            await safe_goto(page, alt_url)
+        except Exception:
+            pass
 
     # Load as many cards as possible
     print("🔄 Scrolling to load events on current page…")
@@ -262,7 +370,7 @@ async def scrape_eventbrite(page):
 
     events.extend(await extract_from_cards(cards))
 
-    # Some regions of Eventbrite use pagination; try Next if present
+    # Pagination (if present)
     while True:
         try:
             next_btn = await page.query_selector('[data-testid="page-next"]:not([aria-disabled="true"])')
@@ -274,11 +382,17 @@ async def scrape_eventbrite(page):
             await page.wait_for_timeout(1500)
             await page.wait_for_selector(
                 "li [data-testid='search-event'], [data-testid='search-event-card']",
-                timeout=NAV_TIMEOUT_MS
+                timeout=NAV_TIMEOUT_MS,
+                state="attached"
             )
             await infinite_scroll(page)
-            new_cards = await page.query_selector_all("li [data-testid='search-event'], [data-testid='search-event-card']")
-            print(f"🧾 Found {len(new_cards)} event cards on this page.")
+            new_cards = []
+            for sel in card_selector_candidates:
+                found = await page.query_selector_all(sel)
+                if found:
+                    new_cards = found
+                    print(f"🧾 Found {len(new_cards)} event cards on this page with selector: {sel}")
+                    break
             events.extend(await extract_from_cards(new_cards))
         except Exception as e:
             print("⚠️ Pagination error:", e)
@@ -326,11 +440,15 @@ async def aggregate_events():
         "--disable-blink-features=AutomationControlled",
     ]
 
+    proxy_server = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
+    proxy_arg = {"server": proxy_server} if proxy_server else None
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=HEADLESS,
             slow_mo=SLOW_MO,
-            args=launch_args
+            args=launch_args,
+            proxy=proxy_arg  # optional; set HTTP_PROXY/HTTPS_PROXY in secrets if needed
         )
 
         context = await browser.new_context(
@@ -340,22 +458,18 @@ async def aggregate_events():
             viewport={"width": 1366, "height": 768},
             geolocation={"latitude": 43.6532, "longitude": -79.3832},
             permissions=["geolocation"],
+            extra_http_headers={
+                "Accept-Language": "en-CA,en;q=0.9",
+                "Upgrade-Insecure-Requests": "1",
+            },
         )
 
-        # Light stealth: hide webdriver flag
+        # Light stealth
         await context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             Object.defineProperty(navigator, 'languages', { get: () => ['en-CA','en'] });
             Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3] });
         """)
-
-        # Block analytics/ads noise to speed up load
-        async def route_handler(route):
-            url = route.request.url
-            if any(part in url for part in BLOCK_URL_PARTS):
-                return await route.abort()
-            return await route.continue_()
-        await context.route("**/*", route_handler)
 
         page = await context.new_page()
         page.set_default_navigation_timeout(NAV_TIMEOUT_MS)
