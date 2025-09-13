@@ -1,73 +1,57 @@
-# events_emailer_eventbrite_only.py
-
 import os
 import asyncio
-import html
 import random
+from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-from playwright.async_api import async_playwright, TimeoutError as PWTimeout
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email.mime.text import MIMEText
+import calendar
+import html
+import time
 import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
-# ===================== Config =====================
-HEADLESS = os.getenv("CI", "").lower() == "true" or os.getenv("HEADLESS", "1") == "1"
-NAV_TIMEOUT_MS = int(os.getenv("NAV_TIMEOUT_MS", "90000"))
-RETRIES = int(os.getenv("NAV_RETRIES", "4"))
-SLOW_MO = int(os.getenv("SLOW_MO_MS", "0"))
-LOG_HTML_MAX_CHARS = int(os.getenv("LOG_HTML_MAX_CHARS", "20000"))  # how many chars of HTML to print
-
-# A few realistic desktop UAs
-UAS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-]
-
-# Block noisy trackers/analytics to speed up load (enabled only AFTER first paint)
-BLOCK_URL_PARTS = [
-    "googletagmanager", "google-analytics", "doubleclick",
-    "hotjar", "segment", "optimizely", "braze", "mixpanel",
-    "facebook", "snap", "tiktok", "bing.com/collect", "bat.bing",
-    "scorecardresearch", "app.link"
-]
-
-# ===================== Dates ======================
+# === Calculate Upcoming Friday–Sunday Dates ===
 def get_upcoming_weekend_dates():
-    """
-    Keep your previous behavior (today+10, today+17) so your pipeline output matches.
-    """
     today = datetime.today()
+    #days_until_friday = (4 - today.weekday()) % 7
+    #friday = today + timedelta(days=days_until_friday + 0)
+    #return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
     return [today + timedelta(days=10), today + timedelta(days=17)]
 
-# ===================== HTML =======================
+# === HTML Output ===
 def generate_html(events):
     dates = get_upcoming_weekend_dates()
     title = f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}"
+    
     html_output = f"""
     <!DOCTYPE html>
     <html lang='en'>
     <head>
         <meta charset='UTF-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
         <title>{title}</title>
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+        <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+        <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css">
+        <link rel="stylesheet" href="https://cdn.datatables.net/searchbuilder/1.5.0/css/searchBuilder.dataTables.min.css">
         <style>
-            body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }}
-            h1 {{ margin-bottom: 16px; }}
-            table {{ border-collapse: collapse; width: 100%; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; vertical-align: top; }}
-            img {{ max-width: 140px; border-radius: 6px; }}
-            th {{ background: #f7f7f7; }}
-            a {{ color: #0a58ca; text-decoration: none; }}
-            a:hover {{ text-decoration: underline; }}
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            h1 {{ margin-bottom: 20px; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th, td {{ padding: 10px; border: 1px solid #ccc; vertical-align: top; }}
+            img {{ max-width: 150px; height: auto; border-radius: 10px; }}
+            .dtsb-title {{ display: none; }}
+            button {{ background-color: black !important; color: white !important; }}
         </style>
     </head>
     <body>
         <h1>{title}</h1>
-        <table>
+        <table id="events">
             <thead>
                 <tr>
-                    <th>Image</th>
+		    <th>Image</th>
                     <th>Title</th>
                     <th>Date</th>
                     <th>Price</th>
@@ -77,6 +61,7 @@ def generate_html(events):
             </thead>
             <tbody>
     """
+
     for e in events:
         if not e.get('title') or not e.get('url'):
             continue
@@ -90,436 +75,276 @@ def generate_html(events):
                 <td>{html.escape(e.get('source', ''))}</td>
             </tr>
         """
+
     html_output += """
             </tbody>
         </table>
+
+        <!-- jQuery + DataTables JS -->
+        <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.68/pdfmake.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.68/vfs_fonts.js"></script>
+        <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+        <script src="https://cdn.datatables.net/searchbuilder/1.5.0/js/dataTables.searchBuilder.min.js"></script>
+
+        <script>
+        function addFancyRandomEventButtonBelowH1() {
+                const dt = $('#events').DataTable();
+                if (!dt) return console.warn("⚠️ DataTable not ready.");
+
+                // Track already shown events
+                let shownIndices = [];
+
+                // Remove any existing random button
+                try { dt.buttons('.random-event').remove(); } catch (e) {}
+
+                dt.button().add(null, {
+                        text: '🎲 Random Event Picker',
+                        className: 'random-event btn btn-outline-primary',
+                        action: function () {
+                                const rowsArr = dt.rows({ search: 'applied' }).nodes().toArray();
+                                if (!rowsArr.length) return alert("No visible events to pick from.");
+
+                                // Reset if all events have been shown
+                                if (shownIndices.length >= rowsArr.length) {
+                                        shownIndices = [];
+                                        console.log("♻️ All events shown — starting over.");
+                                }
+
+                                // Get a random unused index
+                                let randIndex;
+                                do {
+                                        randIndex = Math.floor(Math.random() * rowsArr.length);
+                                } while (shownIndices.includes(randIndex));
+
+                                shownIndices.push(randIndex);
+                                const row = rowsArr[randIndex];
+
+                                // ✅ Title/link is column 2; Image is column 1
+                                const linkEl = row.querySelector("td:nth-child(2) a");
+                                const imgEl  = row.querySelector("td:nth-child(1) img");
+
+                                const title = linkEl?.textContent.trim() || "No title";
+                                const href  = linkEl?.href || "#";
+                                const image = imgEl?.src || "";
+
+                                document.getElementById('random-event-card')?.remove();
+
+                                const card = document.createElement("div");
+                                card.id = "random-event-card";
+                                card.style = `
+                                        border: 1px solid #ccc; border-left: 5px solid #007acc;
+                                        padding: 16px; margin-top: 20px; max-width: 600px;
+                                        border-radius: 8px; position: relative; background: #f9f9f9;
+                                        font-family: sans-serif;
+                                `;
+                                card.innerHTML = `
+                                        <button style="
+                                                position: absolute; top: 8px; right: 10px; background: transparent;
+                                                border: none; font-size: 20px; cursor: pointer; color: #999;"
+                                                onclick="document.getElementById('random-event-card').remove()">×</button>
+                                        <h3 style="margin: 0 0 10px">🎯 Your Random Pick:</h3>
+                                        <a href="${href}" target="_blank" style="font-size: 16px; font-weight: bold; color: #007acc;">${title}</a>
+                                        ${image ? `<div><img src="${image}" style="margin-top: 10px; max-width: 100%; border-radius: 6px;" /></div>` : ''}
+                                `;
+
+                                const h1 = document.querySelector("h1");
+                                if (h1) h1.insertAdjacentElement("afterend", card);
+                        }
+                });
+        }
+
+        (function waitForTableAndUpgrade(retries = 10) {
+          const tableEl = document.querySelector("#events");
+          if (!tableEl || !tableEl.querySelector("thead")) {
+            if (retries > 0) return setTimeout(() => waitForTableAndUpgrade(retries - 1), 500);
+            else return console.warn("❌ Table not found.");
+          }
+
+          if ($.fn.DataTable.isDataTable("#events")) $('#events').DataTable().destroy();
+
+          if (!tableEl.querySelector("tfoot")) {
+            const tfoot = tableEl.querySelector("thead").cloneNode(true);
+            tfoot.querySelectorAll("th").forEach(cell => cell.innerHTML = "");
+            tableEl.appendChild(tfoot);
+          }
+
+          $('#events').DataTable({
+            responsive: true,
+            paging: false,
+            ordering: true,
+            info: false,
+            dom: 'QBfrtip',
+            buttons: ['csv', 'excel'],
+            searchBuilder: { columns: true },
+            columnDefs: [{ targets: -1, orderable: false }],
+            initComplete: function () {
+              this.api().columns().every(function () {
+                const input = document.createElement("input");
+                input.placeholder = "Filter...";
+                input.style.width = "100%";
+                $(input).appendTo($(this.footer()).empty())
+                  .on("keyup change clear", function () {
+                    this.search(this.value).draw();
+                  }.bind(this));
+              });
+              addFancyRandomEventButtonBelowH1();
+            }
+          });
+        })();
+        </script>
     </body>
     </html>
     """
     return html_output
 
-# ===================== Helpers ====================
-async def maybe_dismiss_cookie_banner(page):
-    """
-    Best-effort cookie/consent accept. Won't fail the run if not present.
-    Covers OneTrust variants commonly seen on Eventbrite.
-    """
-    selectors = [
-        "#onetrust-accept-btn-handler",
-        "[data-testid='onetrust-accept-btn-handler']",
-        "button:has-text('Accept all')",
-        "button:has-text('Accept All')",
-        "button:has-text('I Accept')",
-        "button[aria-label='Accept All']",
-        "button[mode='primary'] >> text=Accept",
-    ]
-    for sel in selectors:
-        try:
-            btn = await page.wait_for_selector(sel, timeout=2000, state="visible")
-            if btn:
-                await btn.click()
-                await page.wait_for_timeout(500)
-                return
-        except Exception:
-            continue
-
-async def log_page_debug(page, note=""):
-    """Prints URL, title, and a trimmed HTML snapshot to stdout."""
-    try:
-        cur_url = page.url
-    except Exception:
-        cur_url = "(unavailable)"
-    try:
-        title = await page.title()
-    except Exception:
-        title = "(unavailable)"
-    try:
-        html_text = await page.content()
-    except Exception:
-        html_text = "(no content available)"
-
-    trimmed = html_text[:LOG_HTML_MAX_CHARS]
-    extra = len(html_text) - len(trimmed)
-    print("\n" + "="*80)
-    print(f"🔎 DEBUG SNAPSHOT {note}")
-    print(f"URL:   {cur_url}")
-    print(f"Title: {title}")
-    print(f"HTML  (first {len(trimmed):,} chars{' + ' + str(extra) + ' more' if extra>0 else ''}):")
-    print(trimmed)
-    print("="*80 + "\n")
-
-async def safe_goto(page, url, retries=RETRIES, base_timeout=NAV_TIMEOUT_MS):
-    """
-    Robust navigation with retries/backoff, permissive 'attached' waits,
-    WAF/interstitial detection, and warm-up hops. Logs page HTML on errors.
-    """
-    waits = ["domcontentloaded", "networkidle", "load"]
-    waf_signals = [
-        "Just a moment", "Access denied", "Verify you are human",
-        "unusual traffic", "are you a robot", "temporarily blocked"
-    ]
-
-    for attempt in range(1, retries + 1):
-        try:
-            await page.goto(
-                url,
-                timeout=base_timeout,
-                wait_until=waits[min(attempt - 1, len(waits) - 1)]
-            )
-
-            # Quick cookie banner attempt
-            await maybe_dismiss_cookie_banner(page)
-
-            # Let scripts settle a touch
-            try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
-            except Exception:
-                pass
-
-            # Detect WAF/interstitial
-            try:
-                title = (await page.title()) or ""
-            except Exception:
-                title = ""
-            try:
-                body_snip = (await page.text_content("body")) or ""
-            except Exception:
-                body_snip = ""
-
-            if any(s.lower() in title.lower() for s in waf_signals) or \
-               any(s.lower() in body_snip.lower() for s in waf_signals):
-                raise PWTimeout("WAF/interstitial detected")
-
-            # Do not require visible yet; overlays can hide the list
-            try:
-                await page.wait_for_selector(
-                    "li [data-testid='search-event'], "
-                    "[data-testid='search-event-card'], "
-                    "ul[data-spec='search-results'], "
-                    "[data-testid*='empty'], [data-automation='empty_state']",
-                    timeout=12000,
-                    state="attached"
-                )
-            except Exception:
-                # small scroll to trigger lazy mount
-                try:
-                    await page.evaluate("window.scrollBy(0, 1200)")
-                except Exception:
-                    pass
-                await page.wait_for_selector(
-                    "li [data-testid='search-event'], "
-                    "[data-testid='search-event-card'], "
-                    "ul[data-spec='search-results'], "
-                    "[data-testid*='empty'], [data-automation='empty_state']",
-                    timeout=8000,
-                    state="attached"
-                )
-
-            return  # success
-
-        except Exception as e:
-            # Log a snapshot on every failed attempt
-            await log_page_debug(page, note=f"(after error on attempt {attempt}/{retries})")
-
-            if attempt == retries:
-                # Final failure: raise after logging
-                raise
-
-            backoff = min(2.0 * attempt, 6.0)
-            print(f"⏳ goto retry {attempt}/{retries} after error: {e}\n… sleeping {backoff:.1f}s")
-
-            # Warm-up hops to seed cookies/geo/session
-            try:
-                if attempt == 1:
-                    await page.goto("https://www.eventbrite.ca", timeout=base_timeout, wait_until="domcontentloaded")
-                    await maybe_dismiss_cookie_banner(page)
-                    await page.wait_for_timeout(1000)
-                elif attempt == 2:
-                    await page.goto("https://www.eventbrite.ca/d/canada--toronto/free--events/",
-                                    timeout=base_timeout, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(800)
-            except Exception:
-                pass
-
-            await asyncio.sleep(backoff)
-
-async def infinite_scroll(page, max_idle_rounds=6, wheel_px=6000, max_total_rounds=40):
-    """
-    Scrolls until the page stops growing or caps out to avoid hanging.
-    Uses mouse.wheel where available; falls back to window.scrollBy in headless.
-    """
-    prev_height = 0
-    idle_rounds = 0
-    total_rounds = 0
-    while idle_rounds < max_idle_rounds and total_rounds < max_total_rounds:
-        try:
-            await page.mouse.wheel(0, wheel_px)
-        except Exception:
-            try:
-                await page.evaluate("window.scrollBy(0, 6000)")
-            except Exception:
-                pass
-        await asyncio.sleep(1.0)
-        try:
-            curr_height = await page.evaluate("document.body.scrollHeight")
-        except Exception:
-            break
-        if curr_height == prev_height:
-            idle_rounds += 1
-        else:
-            idle_rounds = 0
-            prev_height = curr_height
-        total_rounds += 1
-
-def normalize_link(href: str) -> str:
-    if not href:
-        return ""
-    if href.startswith("/"):
-        return "https://www.eventbrite.ca" + href
-    return href
-
-async def enable_blocking_after_first_paint(context):
-    """
-    Enable network blocking of heavy analytics/trackers AFTER the first successful paint,
-    to avoid breaking scripts needed to mount the results list.
-    """
-    async def route_handler(route):
-        url = route.request.url
-        if any(part in url for part in BLOCK_URL_PARTS):
-            return await route.abort()
-        return await route.continue_()
-    await context.route("**/*", route_handler)
-
-# ===================== Scraper ====================
+# === Scrapers ===
 async def scrape_eventbrite(page):
-    print("🔍 Scraping Eventbrite…")
+    print("🔍 Scraping Eventbrite...")
     events = []
+    target_dates = [(d.strftime('%b %d')) for d in get_upcoming_weekend_dates()]
     dates = get_upcoming_weekend_dates()
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
+    await page.goto(url)
 
-    # Navigate robustly
-    await safe_goto(page, url)
+    while True:
+        print("🔄 Scrolling to load events on current page...")
+        prev_height = 0
+        retries = 0
+        while retries < 5:
+            await page.mouse.wheel(0, 5000)
+            await asyncio.sleep(1.2)
+            curr_height = await page.evaluate("document.body.scrollHeight")
+            if curr_height == prev_height:
+                retries += 1
+            else:
+                retries = 0
+                prev_height = curr_height
 
-    # Now that first paint succeeded, enable tracker blocking for the rest
-    await enable_blocking_after_first_paint(page.context)
+        cards = await page.query_selector_all("li [data-testid='search-event']")
+        print(f"🧾 Found {len(cards)} event cards on this page.")
 
-    # Early probe: ensure list nodes exist (even if overlayed)
-    try:
-        await page.wait_for_selector(
-            "li [data-testid='search-event'], [data-testid='search-event-card'], ul[data-spec='search-results']",
-            timeout=6000,
-            state="attached"
-        )
-    except Exception:
-        # Rare EB quirk: tweak param ordering or broaden once, then continue
-        alt_url = url.replace("&end_date", "&sort=date&end_date")
-        try:
-            await safe_goto(page, alt_url)
-        except Exception:
-            pass
-
-    # Load as many cards as possible
-    print("🔄 Scrolling to load events on current page…")
-    await infinite_scroll(page)
-
-    # Try multiple card selector variants (EB A/B tests DOM)
-    card_selector_candidates = [
-        "li [data-testid='search-event']",
-        "[data-testid='search-event-card']",
-        "ul[data-spec='search-results'] li article",
-        "article[data-testid*='card']",
-    ]
-    cards = []
-    for sel in card_selector_candidates:
-        try:
-            found = await page.query_selector_all(sel)
-            if found:
-                cards = found
-                print(f"🧾 Found {len(cards)} event cards with selector: {sel}")
-                break
-        except Exception:
-            continue
-    if not cards:
-        print("⚠️ No event cards found — page structure may have changed or location filter is empty.")
-        return events
-
-    async def extract_from_cards(cards_list):
-        local_events = []
-        for card in cards_list:
+        for card in cards:
             try:
-                # Title variants
-                title_el = await card.query_selector("h3, h2, [data-testid='title']")
+                title_el = await card.query_selector("h3")
                 title = (await title_el.inner_text()).strip() if title_el else "N/A"
 
-                # Date & location variants
-                date_el = await card.query_selector("time, a + p[class*='Typography_'], [data-testid='date']")
-                date_text = (await date_el.inner_text()).strip() if date_el else ""
+                date_el = await card.query_selector("a + p.Typography_root__487rx")
+                location_el = await card.query_selector(".Typography_root__487rx.Typography_body-md__487rx")
+                date_text = (await date_el.inner_text()).strip() if date_el else "N/A"
+                location_text = (await location_el.inner_text()).strip() if location_el else "N/A"
+                date_text = date_text
 
-                loc_el = await card.query_selector(
-                    "[data-testid='location'], .event-card__location, "
-                    "p[class*='Typography_'].Typography_body-md__487rx, p[class*='body-md']"
-                )
-                location_text = (await loc_el.inner_text()).strip() if loc_el else ""
-
-                # Image variants
-                img_el = await card.query_selector("img.event-card-image, img[class*='card'], img[loading]")
+                img_el = await card.query_selector("img.event-card-image")
                 img_url = await img_el.get_attribute("src") if img_el else ""
 
-                # Link variants
-                link_el = await card.query_selector("a.event-card-link, a[href*='/e/'], a[href*='/d/']")
-                link_raw = await link_el.get_attribute("href") if link_el else ""
-                link = normalize_link(link_raw)
+                link_el = await card.query_selector("a.event-card-link")
+                link = await link_el.get_attribute("href") if link_el else ""
 
-                # Price variants
-                price_el = await card.query_selector("[data-testid*='price'], div[class*='priceWrapper'] p, .eds-media-card__price")
+                price_el = await card.query_selector("div[class*='priceWrapper'] p")
                 price = (await price_el.inner_text()).strip() if price_el else "Free"
 
-                local_events.append({
+                events.append({
                     "title": title,
                     "date": date_text,
                     "description": location_text,
-                    "image": img_url or "",
-                    "url": link or "",
+                    "image": img_url,
+                    "url": link,
                     "price": price,
                     "source": "Eventbrite"
                 })
             except Exception as e:
                 print("⚠️ Error extracting event:", e)
-        return local_events
 
-    events.extend(await extract_from_cards(cards))
-
-    # Pagination (if present)
-    while True:
         try:
             next_btn = await page.query_selector('[data-testid="page-next"]:not([aria-disabled="true"])')
-            if not next_btn:
+            if next_btn:
+                print("➡️ Going to next page...")
+                await next_btn.click()
+                await asyncio.sleep(2)
+            else:
                 print("🛑 No more pages.")
                 break
-            print("➡️ Going to next page…")
-            await next_btn.click()
-            await page.wait_for_timeout(1500)
-            await page.wait_for_selector(
-                "li [data-testid='search-event'], [data-testid='search-event-card']",
-                timeout=NAV_TIMEOUT_MS,
-                state="attached"
-            )
-            await infinite_scroll(page)
-            new_cards = []
-            for sel in card_selector_candidates:
-                found = await page.query_selector_all(sel)
-                if found:
-                    new_cards = found
-                    print(f"🧾 Found {len(new_cards)} event cards on this page with selector: {sel}")
-                    break
-            events.extend(await extract_from_cards(new_cards))
         except Exception as e:
             print("⚠️ Pagination error:", e)
             break
-
     print(f"✅ Finished scraping. Found {len(events)} events.")
     return events
 
-# ===================== Email ======================
 def send_email_with_attachment(to_email, subject, html_path):
     from_email = os.getenv("GMAIL_USER")
-    app_password = os.getenv("GMAIL_PASS")
-    if not from_email or not app_password:
-        print("⚠️ Missing GMAIL_USER/GMAIL_PASS — skipping email send.")
-        return
+    app_password = os.getenv("GMAIL_PASS")  # Use an App Password, not your Gmail password
+
+    # Accept either a string or a list for to_email
+    if isinstance(to_email, str):
+        to_emails = [email.strip() for email in to_email.split(",")]
+    else:
+        to_emails = list(to_email)
 
     msg = MIMEMultipart()
-    msg["From"] = from_email
-    msg["To"] = to_email or ""
-    msg["Subject"] = subject
+    msg['From'] = from_email
+    msg['To'] = ", ".join(to_emails)
+    msg['Subject'] = subject
 
-    msg.attach(MIMEText("Toronto Weekend Events (Eventbrite Only)", "plain"))
+    # Attach body
+    msg.attach(MIMEText("open your 'Toronto Weekend Events' HTML file and book an event 2 weeks from now for your social life.", 'plain'))
 
-    with open(html_path, "rb") as f:
-        part = MIMEApplication(f.read(), Name="eventbrite_events.html")
-    part["Content-Disposition"] = 'attachment; filename="eventbrite_events.html"'
-    msg.attach(part)
+    # Attach the file
+    with open(html_path, "rb") as file:
+        part = MIMEApplication(file.read(), Name="weekend_events_toronto.html")
+        part['Content-Disposition'] = 'attachment; filename="weekend_events_toronto.html"'
+        msg.attach(part)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+    # Send the email
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
         server.login(from_email, app_password)
-        server.send_message(msg)
+        server.send_message(msg, from_addr=from_email, to_addrs=to_emails)
     print("📧 Email sent!")
 
-# ===================== Main =======================
+# === Main Runner ===
 async def aggregate_events():
     dates = get_upcoming_weekend_dates()
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
-
-    launch_args = [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-zygote",
-        "--disable-blink-features=AutomationControlled",
-    ]
-
-    proxy_server = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
-    proxy_arg = {"server": proxy_server} if proxy_server else None
-
+    all_events = []
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=HEADLESS,
-            slow_mo=SLOW_MO,
-            args=launch_args,
-            proxy=proxy_arg  # optional; set HTTP_PROXY/HTTPS_PROXY in secrets if needed
-        )
-
-        context = await browser.new_context(
-            locale="en-CA",
-            timezone_id="America/Toronto",
-            user_agent=random.choice(UAS),
-            viewport={"width": 1366, "height": 768},
-            geolocation={"latitude": 43.6532, "longitude": -79.3832},
-            permissions=["geolocation"],
-            extra_http_headers={
-                "Accept-Language": "en-CA,en;q=0.9",
-                "Upgrade-Insecure-Requests": "1",
-            },
-        )
-
-        # Light stealth
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-CA','en'] });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3] });
-        """)
-
-        page = await context.new_page()
-        page.set_default_navigation_timeout(NAV_TIMEOUT_MS)
-        page.set_default_timeout(NAV_TIMEOUT_MS)
-
-        events = await scrape_eventbrite(page)
-
-        await context.close()
+        browser = await p.chromium.launch(headless=False, slow_mo=50)
+        page = await browser.new_page()
+        all_events += await scrape_eventbrite(page)
         await browser.close()
 
-    # De-dupe by (title, url)
-    dedup = {}
-    for e in events:
-        key = (e.get("title","").strip().lower(), (e.get("url","") or "").strip().lower())
-        if key not in dedup:
-            dedup[key] = e
-    events = list(dedup.values())
+        # 🧹 De-duplicate by title only
+        seen_titles = set()
+        deduped_events = []
+        for event in all_events:
+            title_key = event['title'].strip().lower()
+            if title_key not in seen_titles:
+                seen_titles.add(title_key)
+                deduped_events.append(event)
+        all_events = deduped_events
 
-    html_output = generate_html(events)
-    out_path = "eventbrite_events.html"
-    with open(out_path, "w", encoding="utf-8") as f:
+
+    html_output = generate_html(all_events)
+    with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
         f.write(html_output)
-    print(f"✅ File saved: {out_path}")
+    print("✅ File saved: weekend_events_toronto.html")
 
+
+    # Send the email
     send_email_with_attachment(
-        to_email=os.getenv("EMAIL_TO", ""),
-        subject=f"🎉 Eventbrite - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
-        html_path=out_path,
+        to_email=os.getenv("EMAIL_TO"),
+        subject = f"🎉 Eventbrite - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
+        html_path="weekend_events_toronto.html"
     )
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
+
+
