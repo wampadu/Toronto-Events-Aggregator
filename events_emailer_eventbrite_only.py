@@ -482,3 +482,44 @@ async def aggregate_events():
             extra_http_headers={
                 "Accept-Language": "en-CA,en;q=0.9",
                 "Upgrade-Insecure-Requests": "1",
+            },
+        )
+
+        # Light stealth
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-CA','en'] });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3] });
+        """)
+
+        page = await context.new_page()
+        page.set_default_navigation_timeout(NAV_TIMEOUT_MS)
+        page.set_default_timeout(NAV_TIMEOUT_MS)
+
+        events = await scrape_eventbrite(page)
+
+        await context.close()
+        await browser.close()
+
+    # De-dupe by (title, url)
+    dedup = {}
+    for e in events:
+        key = (e.get("title","").strip().lower(), (e.get("url","") or "").strip().lower())
+        if key not in dedup:
+            dedup[key] = e
+    events = list(dedup.values())
+
+    html_output = generate_html(events)
+    out_path = "eventbrite_events.html"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html_output)
+    print(f"✅ File saved: {out_path}")
+
+    send_email_with_attachment(
+        to_email=os.getenv("EMAIL_TO", ""),
+        subject=f"🎉 Eventbrite - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
+        html_path=out_path,
+    )
+
+if __name__ == "__main__":
+    asyncio.run(aggregate_events())
