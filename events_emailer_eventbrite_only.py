@@ -1,30 +1,33 @@
 import os
 import asyncio
-import random
-from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright, TimeoutError as PWTimeoutError
+from bs4 import BeautifulSoup  # (kept if you later parse detail pages)
 from datetime import datetime, timedelta
-import calendar
 import html
-import time
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+import random
+import time
 
-# === Calculate Upcoming Friday–Sunday Dates ===
+# =========================
+# Date helpers (2 target dates)
+# =========================
 def get_upcoming_weekend_dates():
+    """
+    Current behavior: return two dates used as [start, end].
+    If you want Fri–Sun, change this to compute those 3 days and return [fri, sun].
+    """
     today = datetime.today()
-    #days_until_friday = (4 - today.weekday()) % 7
-    #friday = today + timedelta(days=days_until_friday + 0)
-    #return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
     return [today + timedelta(days=10), today + timedelta(days=17)]
 
-# === HTML Output ===
+# =========================
+# HTML output
+# =========================
 def generate_html(events):
     dates = get_upcoming_weekend_dates()
     title = f"🎉 Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}"
-    
     html_output = f"""
     <!DOCTYPE html>
     <html lang='en'>
@@ -51,7 +54,7 @@ def generate_html(events):
         <table id="events">
             <thead>
                 <tr>
-		    <th>Image</th>
+                    <th>Image</th>
                     <th>Title</th>
                     <th>Date</th>
                     <th>Price</th>
@@ -97,45 +100,25 @@ def generate_html(events):
         function addFancyRandomEventButtonBelowH1() {
                 const dt = $('#events').DataTable();
                 if (!dt) return console.warn("⚠️ DataTable not ready.");
-
-                // Track already shown events
                 let shownIndices = [];
-
-                // Remove any existing random button
                 try { dt.buttons('.random-event').remove(); } catch (e) {}
-
                 dt.button().add(null, {
                         text: '🎲 Random Event Picker',
                         className: 'random-event btn btn-outline-primary',
                         action: function () {
                                 const rowsArr = dt.rows({ search: 'applied' }).nodes().toArray();
                                 if (!rowsArr.length) return alert("No visible events to pick from.");
-
-                                // Reset if all events have been shown
-                                if (shownIndices.length >= rowsArr.length) {
-                                        shownIndices = [];
-                                        console.log("♻️ All events shown — starting over.");
-                                }
-
-                                // Get a random unused index
+                                if (shownIndices.length >= rowsArr.length) { shownIndices = []; }
                                 let randIndex;
-                                do {
-                                        randIndex = Math.floor(Math.random() * rowsArr.length);
-                                } while (shownIndices.includes(randIndex));
-
+                                do { randIndex = Math.floor(Math.random() * rowsArr.length); } while (shownIndices.includes(randIndex));
                                 shownIndices.push(randIndex);
                                 const row = rowsArr[randIndex];
-
-                                // ✅ Title/link is column 2; Image is column 1
                                 const linkEl = row.querySelector("td:nth-child(2) a");
                                 const imgEl  = row.querySelector("td:nth-child(1) img");
-
                                 const title = linkEl?.textContent.trim() || "No title";
                                 const href  = linkEl?.href || "#";
                                 const image = imgEl?.src || "";
-
                                 document.getElementById('random-event-card')?.remove();
-
                                 const card = document.createElement("div");
                                 card.id = "random-event-card";
                                 card.style = `
@@ -153,7 +136,6 @@ def generate_html(events):
                                         <a href="${href}" target="_blank" style="font-size: 16px; font-weight: bold; color: #007acc;">${title}</a>
                                         ${image ? `<div><img src="${image}" style="margin-top: 10px; max-width: 100%; border-radius: 6px;" /></div>` : ''}
                                 `;
-
                                 const h1 = document.querySelector("h1");
                                 if (h1) h1.insertAdjacentElement("afterend", card);
                         }
@@ -166,15 +148,12 @@ def generate_html(events):
             if (retries > 0) return setTimeout(() => waitForTableAndUpgrade(retries - 1), 500);
             else return console.warn("❌ Table not found.");
           }
-
           if ($.fn.DataTable.isDataTable("#events")) $('#events').DataTable().destroy();
-
           if (!tableEl.querySelector("tfoot")) {
             const tfoot = tableEl.querySelector("thead").cloneNode(true);
             tfoot.querySelectorAll("th").forEach(cell => cell.innerHTML = "");
             tableEl.appendChild(tfoot);
           }
-
           $('#events').DataTable({
             responsive: true,
             paging: false,
@@ -204,86 +183,13 @@ def generate_html(events):
     """
     return html_output
 
-# === Scrapers ===
-async def scrape_eventbrite(page):
-    print("🔍 Scraping Eventbrite...")
-    events = []
-    target_dates = [(d.strftime('%b %d')) for d in get_upcoming_weekend_dates()]
-    dates = get_upcoming_weekend_dates()
-    start_str = dates[0].strftime("%Y-%m-%d")
-    end_str = dates[-1].strftime("%Y-%m-%d")
-    url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
-    await page.goto(url)
-
-    while True:
-        print("🔄 Scrolling to load events on current page...")
-        prev_height = 0
-        retries = 0
-        while retries < 5:
-            await page.mouse.wheel(0, 5000)
-            await asyncio.sleep(1.2)
-            curr_height = await page.evaluate("document.body.scrollHeight")
-            if curr_height == prev_height:
-                retries += 1
-            else:
-                retries = 0
-                prev_height = curr_height
-
-        cards = await page.query_selector_all("li [data-testid='search-event']")
-        print(f"🧾 Found {len(cards)} event cards on this page.")
-
-        for card in cards:
-            try:
-                title_el = await card.query_selector("h3")
-                title = (await title_el.inner_text()).strip() if title_el else "N/A"
-
-                date_el = await card.query_selector("a + p.Typography_root__487rx")
-                location_el = await card.query_selector(".Typography_root__487rx.Typography_body-md__487rx")
-                date_text = (await date_el.inner_text()).strip() if date_el else "N/A"
-                location_text = (await location_el.inner_text()).strip() if location_el else "N/A"
-                date_text = date_text
-
-                img_el = await card.query_selector("img.event-card-image")
-                img_url = await img_el.get_attribute("src") if img_el else ""
-
-                link_el = await card.query_selector("a.event-card-link")
-                link = await link_el.get_attribute("href") if link_el else ""
-
-                price_el = await card.query_selector("div[class*='priceWrapper'] p")
-                price = (await price_el.inner_text()).strip() if price_el else "Free"
-
-                events.append({
-                    "title": title,
-                    "date": date_text,
-                    "description": location_text,
-                    "image": img_url,
-                    "url": link,
-                    "price": price,
-                    "source": "Eventbrite"
-                })
-            except Exception as e:
-                print("⚠️ Error extracting event:", e)
-
-        try:
-            next_btn = await page.query_selector('[data-testid="page-next"]:not([aria-disabled="true"])')
-            if next_btn:
-                print("➡️ Going to next page...")
-                await next_btn.click()
-                await asyncio.sleep(2)
-            else:
-                print("🛑 No more pages.")
-                break
-        except Exception as e:
-            print("⚠️ Pagination error:", e)
-            break
-    print(f"✅ Finished scraping. Found {len(events)} events.")
-    return events
-
+# =========================
+# Email
+# =========================
 def send_email_with_attachment(to_email, subject, html_path):
     from_email = os.getenv("GMAIL_USER")
-    app_password = os.getenv("GMAIL_PASS")  # Use an App Password, not your Gmail password
+    app_password = os.getenv("GMAIL_PASS")  # Gmail App Password
 
-    # Accept either a string or a list for to_email
     if isinstance(to_email, str):
         to_emails = [email.strip() for email in to_email.split(",")]
     else:
@@ -293,55 +199,269 @@ def send_email_with_attachment(to_email, subject, html_path):
     msg['From'] = from_email
     msg['To'] = ", ".join(to_emails)
     msg['Subject'] = subject
-
-    # Attach body
     msg.attach(MIMEText("open your 'Toronto Weekend Events' HTML file and book an event 2 weeks from now for your social life.", 'plain'))
 
-    # Attach the file
     with open(html_path, "rb") as file:
         part = MIMEApplication(file.read(), Name="weekend_events_toronto.html")
         part['Content-Disposition'] = 'attachment; filename="weekend_events_toronto.html"'
         msg.attach(part)
 
-    # Send the email
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
         server.login(from_email, app_password)
         server.send_message(msg, from_addr=from_email, to_addrs=to_emails)
     print("📧 Email sent!")
 
-# === Main Runner ===
+# =========================
+# Playwright helpers
+# =========================
+STEALTH_INIT = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
+Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3] });
+"""
+
+BLOCK_URL_PARTS = [
+    "googletagmanager", "google-analytics", "doubleclick",
+    "hotjar", "segment", "optimizely", "braze", "mixpanel",
+    "facebook", "snap", "tiktok", "bing.com/collect", "bat.bing",
+    "scorecardresearch", "app.link"
+]
+
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+async def safe_goto(page, url, max_retries=3, base_timeout=90000):
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=base_timeout)
+            return
+        except PWTimeoutError as e:
+            last_err = e
+            print(f"⏳ goto timeout (attempt {attempt}/{max_retries}). Backing off...")
+            await asyncio.sleep(2 * attempt)
+        except Exception as e:
+            last_err = e
+            print(f"⚠️ goto error (attempt {attempt}/{max_retries}): {e}")
+            await asyncio.sleep(2 * attempt)
+    raise last_err
+
+async def accept_cookies_if_present(page):
+    # Eventbrite often uses OneTrust
+    selectors = [
+        "#onetrust-accept-btn-handler",
+        "button[aria-label='Accept All']",
+        "button:has-text('Accept All')",
+        "[data-testid='onetrust-accept-btn-handler']",
+    ]
+    for sel in selectors:
+        try:
+            btn = await page.query_selector(sel)
+            if btn:
+                await btn.click()
+                await asyncio.sleep(0.5)
+                print("🍪 Accepted cookies.")
+                return
+        except:
+            pass
+
+async def infinite_scroll(page, max_idle_rounds=5, wheel_px=4000, max_total_rounds=40):
+    prev_height = 0
+    idle_rounds = 0
+    total_rounds = 0
+    while idle_rounds < max_idle_rounds and total_rounds < max_total_rounds:
+        try:
+            await page.mouse.wheel(0, wheel_px)
+        except:
+            # mouse may not exist in headless; use window.scrollBy as fallback
+            await page.evaluate("window.scrollBy(0, 4000)")
+        await asyncio.sleep(1.2)
+        curr_height = await page.evaluate("document.body.scrollHeight")
+        if curr_height == prev_height:
+            idle_rounds += 1
+        else:
+            idle_rounds = 0
+            prev_height = curr_height
+        total_rounds += 1
+
+# =========================
+# Scraper
+# =========================
+async def scrape_eventbrite(page):
+    print("🔍 Scraping Eventbrite...")
+    events = []
+    dates = get_upcoming_weekend_dates()
+    start_str = dates[0].strftime("%Y-%m-%d")
+    end_str = dates[-1].strftime("%Y-%m-%d")
+
+    # CA Toronto main search with explicit start/end
+    url = (
+        "https://www.eventbrite.ca/d/canada--toronto/events/"
+        f"?start_date={start_str}&end_date={end_str}"
+    )
+
+    await safe_goto(page, url)
+
+    # Handle cookie/consent if shown
+    await accept_cookies_if_present(page)
+
+    # Let critical content load
+    await asyncio.sleep(2.0)
+
+    # Try to ensure location is Toronto. If a location control exists, consider clicking it.
+    # (Kept minimal to avoid fragility; your earlier runs showed manual dropdown might be needed.)
+    # Optional: TODO add robust location set if Eventbrite shows a location modal.
+
+    # Progressive infinite scroll to load most cards
+    print("🔄 Scrolling to load events...")
+    await infinite_scroll(page)
+
+    # Gather cards; try multiple selector fallbacks due to frequent A/B tests
+    card_selectors = [
+        "li [data-testid='search-event']",              # your original
+        "[data-testid='search-event-card']",            # alt
+        "ul[data-spec='search-results'] li article",    # generic
+        "article[data-testid*='card']"                  # very generic fallback
+    ]
+
+    cards = []
+    for sel in card_selectors:
+        cards = await page.query_selector_all(sel)
+        if cards:
+            print(f"🧾 Found {len(cards)} event cards with selector: {sel}")
+            break
+    if not cards:
+        print("⚠️ No cards found. The page structure may have changed.")
+        return events
+
+    # Extract data
+    for card in cards:
+        try:
+            # Title variants
+            title_el = await card.query_selector("h3, h2, [data-testid='title']")
+            title = (await title_el.inner_text()).strip() if title_el else "N/A"
+
+            # Date & location variants (EB uses Typography classes that change frequently)
+            date_el = await card.query_selector("time, a + p, [data-testid='date']")
+            date_text = (await date_el.inner_text()).strip() if date_el else ""
+
+            loc_el = await card.query_selector("[data-testid='location'], .event-card__location, .Typography_body-md__487rx")
+            location_text = (await loc_el.inner_text()).strip() if loc_el else ""
+
+            # Image variants
+            img_el = await card.query_selector("img.event-card-image, img[loading], img")
+            img_url = await img_el.get_attribute("src") if img_el else ""
+
+            # Link variants
+            link_el = await card.query_selector("a.event-card-link, a[href*='/e/'], a[href*='/d/']")
+            link = await link_el.get_attribute("href") if link_el else ""
+            if link and link.startswith("/"):
+                link = "https://www.eventbrite.ca" + link
+
+            # Price variants
+            price_el = await card.query_selector("[data-testid*='price'], [class*='price'], .eds-media-card__price")
+            price = (await price_el.inner_text()).strip() if price_el else "Free"
+
+            events.append({
+                "title": title or "N/A",
+                "date": date_text,
+                "description": location_text,
+                "image": img_url or "",
+                "url": link or "",
+                "price": price or "",
+                "source": "Eventbrite"
+            })
+        except Exception as e:
+            print("⚠️ Error extracting an event card:", e)
+
+    print(f"✅ Finished scraping. Found {len(events)} events.")
+    return events
+
+# =========================
+# Main
+# =========================
 async def aggregate_events():
     dates = get_upcoming_weekend_dates()
     print(f"📆 Scraping for: {[d.strftime('%Y-%m-%d') for d in dates]}")
     all_events = []
+
+    proxy_server = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY") or None
+    # e.g., set in GH Actions secrets if you have one:
+    # HTTP_PROXY=http://user:pass@host:port
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False, slow_mo=50)
-        page = await browser.new_page()
-        all_events += await scrape_eventbrite(page)
+        chrome = p.chromium
+
+        launch_args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-blink-features=AutomationControlled",
+        ]
+
+        browser = await chrome.launch(
+            headless=True,                 # headless in CI
+            args=launch_args,
+        )
+
+        context_args = {
+            "user_agent": UA,
+            "viewport": {"width": 1366, "height": 768},
+            "locale": "en-CA",
+            "timezone_id": "America/Toronto",
+            "geolocation": {"latitude": 43.6532, "longitude": -79.3832},  # Toronto
+            "permissions": ["geolocation"],
+        }
+        if proxy_server:
+            # Playwright python proxy must be passed on launch, not context.
+            # Here we only read env to hint setup; for true proxy support,
+            # pass {"server": proxy_server} to launch(proxy=...) above in Playwright >=1.40.
+            pass
+
+        context = await browser.new_context(**context_args)
+        await context.add_init_script(STEALTH_INIT)
+
+        # Block analytics/ads noise to speed up load (don’t block images/css/html/js)
+        async def route_handler(route):
+            url = route.request.url
+            if any(part in url for part in BLOCK_URL_PARTS):
+                return await route.abort()
+            return await route.continue_()
+        await context.route("**/*", route_handler)
+
+        page = await context.new_page()
+        page.set_default_timeout(90000)
+
+        events = await scrape_eventbrite(page)
+        all_events.extend(events)
+
+        await context.close()
         await browser.close()
 
-        # 🧹 De-duplicate by title only
-        seen_titles = set()
-        deduped_events = []
-        for event in all_events:
-            title_key = event['title'].strip().lower()
-            if title_key not in seen_titles:
-                seen_titles.add(title_key)
-                deduped_events.append(event)
-        all_events = deduped_events
+    # De-duplicate by normalized title
+    seen = set()
+    deduped = []
+    for ev in all_events:
+        key = (ev.get("title","").strip().lower())
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(ev)
 
-
-    html_output = generate_html(all_events)
-    with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
+    html_output = generate_html(deduped)
+    out_path = "weekend_events_toronto.html"
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write(html_output)
-    print("✅ File saved: weekend_events_toronto.html")
+    print(f"✅ File saved: {out_path}")
 
-
-    # Send the email
+    # Email
     send_email_with_attachment(
         to_email=os.getenv("EMAIL_TO"),
-        subject = f"🎉 Eventbrite Only - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
-        html_path="weekend_events_toronto.html"
+        subject=f"🎉 Eventbrite Only - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
+        html_path=out_path
     )
 
 if __name__ == "__main__":
