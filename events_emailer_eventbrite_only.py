@@ -16,6 +16,7 @@ HEADLESS = os.getenv("CI", "").lower() == "true" or os.getenv("HEADLESS", "1") =
 NAV_TIMEOUT_MS = int(os.getenv("NAV_TIMEOUT_MS", "90000"))
 RETRIES = int(os.getenv("NAV_RETRIES", "4"))
 SLOW_MO = int(os.getenv("SLOW_MO_MS", "0"))
+LOG_HTML_MAX_CHARS = int(os.getenv("LOG_HTML_MAX_CHARS", "20000"))  # how many chars of HTML to print
 
 # A few realistic desktop UAs
 UAS = [
@@ -122,10 +123,35 @@ async def maybe_dismiss_cookie_banner(page):
         except Exception:
             continue
 
+async def log_page_debug(page, note=""):
+    """Prints URL, title, and a trimmed HTML snapshot to stdout."""
+    try:
+        cur_url = page.url
+    except Exception:
+        cur_url = "(unavailable)"
+    try:
+        title = await page.title()
+    except Exception:
+        title = "(unavailable)"
+    try:
+        html_text = await page.content()
+    except Exception:
+        html_text = "(no content available)"
+
+    trimmed = html_text[:LOG_HTML_MAX_CHARS]
+    extra = len(html_text) - len(trimmed)
+    print("\n" + "="*80)
+    print(f"🔎 DEBUG SNAPSHOT {note}")
+    print(f"URL:   {cur_url}")
+    print(f"Title: {title}")
+    print(f"HTML  (first {len(trimmed):,} chars{' + ' + str(extra) + ' more' if extra>0 else ''}):")
+    print(trimmed)
+    print("="*80 + "\n")
+
 async def safe_goto(page, url, retries=RETRIES, base_timeout=NAV_TIMEOUT_MS):
     """
     Robust navigation with retries/backoff, permissive 'attached' waits,
-    WAF/interstitial detection, and warm-up hops.
+    WAF/interstitial detection, and warm-up hops. Logs page HTML on errors.
     """
     waits = ["domcontentloaded", "networkidle", "load"]
     waf_signals = [
@@ -192,20 +218,15 @@ async def safe_goto(page, url, retries=RETRIES, base_timeout=NAV_TIMEOUT_MS):
             return  # success
 
         except Exception as e:
+            # Log a snapshot on every failed attempt
+            await log_page_debug(page, note=f"(after error on attempt {attempt}/{retries})")
+
             if attempt == retries:
-                # Dump artifacts for debugging
-                try:
-                    html_dump = await page.content()
-                    with open("debug_eventbrite.html", "w", encoding="utf-8") as f:
-                        f.write(html_dump)
-                    await page.screenshot(path="debug_eventbrite.png", full_page=True)
-                    print("🧪 Wrote debug_eventbrite.html and debug_eventbrite.png")
-                except Exception:
-                    pass
+                # Final failure: raise after logging
                 raise
 
             backoff = min(2.0 * attempt, 6.0)
-            print(f"⏳ goto retry {attempt}/{retries} after error: {e}… sleeping {backoff:.1f}s")
+            print(f"⏳ goto retry {attempt}/{retries} after error: {e}\n… sleeping {backoff:.1f}s")
 
             # Warm-up hops to seed cookies/geo/session
             try:
@@ -461,44 +482,3 @@ async def aggregate_events():
             extra_http_headers={
                 "Accept-Language": "en-CA,en;q=0.9",
                 "Upgrade-Insecure-Requests": "1",
-            },
-        )
-
-        # Light stealth
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-CA','en'] });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3] });
-        """)
-
-        page = await context.new_page()
-        page.set_default_navigation_timeout(NAV_TIMEOUT_MS)
-        page.set_default_timeout(NAV_TIMEOUT_MS)
-
-        events = await scrape_eventbrite(page)
-
-        await context.close()
-        await browser.close()
-
-    # De-dupe by (title, url)
-    dedup = {}
-    for e in events:
-        key = (e.get("title","").strip().lower(), (e.get("url","") or "").strip().lower())
-        if key not in dedup:
-            dedup[key] = e
-    events = list(dedup.values())
-
-    html_output = generate_html(events)
-    out_path = "eventbrite_events.html"
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(html_output)
-    print(f"✅ File saved: {out_path}")
-
-    send_email_with_attachment(
-        to_email=os.getenv("EMAIL_TO", ""),
-        subject=f"🎉 Eventbrite - Toronto Weekend Events – {dates[0].strftime('%B %d')}-{dates[-1].strftime('%d, %Y')}",
-        html_path=out_path,
-    )
-
-if __name__ == "__main__":
-    asyncio.run(aggregate_events())
