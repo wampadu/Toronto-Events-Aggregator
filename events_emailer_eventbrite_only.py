@@ -332,9 +332,9 @@ async def aggregate_events():
                 deduped_events.append(event)
         all_events = deduped_events
 
-	with open("eventbrite.json", "w") as f:
-    	json.dump(all_events, f)
-    print("✅ Json saved: weekend_eventbrite_toronto")
+    with open("eventbrite.json", "w") as f:
+        json.dump(all_events, f)
+        print("✅ Json saved: weekend_eventbrite_toronto")
 	
     #html_output = generate_html(all_events)
     #with open("weekend_eventbrite_toronto.html", "w", encoding="utf-8") as f:
