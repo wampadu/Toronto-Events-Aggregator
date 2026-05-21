@@ -1,0 +1,161 @@
+
+    <!DOCTYPE html>
+    <html lang='en'>
+    <head>
+        <meta charset='UTF-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+        <title>🎉 Toronto Weekend Events – May 31-07, 2026</title>
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+        <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+        <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css">
+        <link rel="stylesheet" href="https://cdn.datatables.net/searchbuilder/1.5.0/css/searchBuilder.dataTables.min.css">
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            h1 { margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 10px; border: 1px solid #ccc; vertical-align: top; }
+            img { max-width: 150px; height: auto; border-radius: 10px; }
+            .dtsb-title { display: none; }
+            button { background-color: black !important; color: white !important; }
+        </style>
+    </head>
+    <body>
+        <h1>🎉 Toronto Weekend Events – May 31-07, 2026</h1>
+        <table id="events">
+            <thead>
+                <tr>
+		    <th>Image</th>
+                    <th>Title</th>
+                    <th>Date</th>
+                    <th>Price</th>
+                    <th>Description</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+    
+            </tbody>
+        </table>
+
+        <!-- jQuery + DataTables JS -->
+        <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+        <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.68/pdfmake.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.68/vfs_fonts.js"></script>
+        <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+        <script src="https://cdn.datatables.net/searchbuilder/1.5.0/js/dataTables.searchBuilder.min.js"></script>
+
+        <script>
+        function addFancyRandomEventButtonBelowH1() {
+                const dt = $('#events').DataTable();
+                if (!dt) return console.warn("⚠️ DataTable not ready.");
+
+                // Track already shown events
+                let shownIndices = [];
+
+                // Remove any existing random button
+                try { dt.buttons('.random-event').remove(); } catch (e) {}
+
+                dt.button().add(null, {
+                        text: '🎲 Random Event Picker',
+                        className: 'random-event btn btn-outline-primary',
+                        action: function () {
+                                const rowsArr = dt.rows({ search: 'applied' }).nodes().toArray();
+                                if (!rowsArr.length) return alert("No visible events to pick from.");
+
+                                // Reset if all events have been shown
+                                if (shownIndices.length >= rowsArr.length) {
+                                        shownIndices = [];
+                                        console.log("♻️ All events shown — starting over.");
+                                }
+
+                                // Get a random unused index
+                                let randIndex;
+                                do {
+                                        randIndex = Math.floor(Math.random() * rowsArr.length);
+                                } while (shownIndices.includes(randIndex));
+
+                                shownIndices.push(randIndex);
+                                const row = rowsArr[randIndex];
+
+                                // ✅ Title/link is column 2; Image is column 1
+                                const linkEl = row.querySelector("td:nth-child(2) a");
+                                const imgEl  = row.querySelector("td:nth-child(1) img");
+
+                                const title = linkEl?.textContent.trim() || "No title";
+                                const href  = linkEl?.href || "#";
+                                const image = imgEl?.src || "";
+
+                                document.getElementById('random-event-card')?.remove();
+
+                                const card = document.createElement("div");
+                                card.id = "random-event-card";
+                                card.style = `
+                                        border: 1px solid #ccc; border-left: 5px solid #007acc;
+                                        padding: 16px; margin-top: 20px; max-width: 600px;
+                                        border-radius: 8px; position: relative; background: #f9f9f9;
+                                        font-family: sans-serif;
+                                `;
+                                card.innerHTML = `
+                                        <button style="
+                                                position: absolute; top: 8px; right: 10px; background: transparent;
+                                                border: none; font-size: 20px; cursor: pointer; color: #999;"
+                                                onclick="document.getElementById('random-event-card').remove()">×</button>
+                                        <h3 style="margin: 0 0 10px">🎯 Your Random Pick:</h3>
+                                        <a href="${href}" target="_blank" style="font-size: 16px; font-weight: bold; color: #007acc;">${title}</a>
+                                        ${image ? `<div><img src="${image}" style="margin-top: 10px; max-width: 100%; border-radius: 6px;" /></div>` : ''}
+                                `;
+
+                                const h1 = document.querySelector("h1");
+                                if (h1) h1.insertAdjacentElement("afterend", card);
+                        }
+                });
+        }
+
+        (function waitForTableAndUpgrade(retries = 10) {
+          const tableEl = document.querySelector("#events");
+          if (!tableEl || !tableEl.querySelector("thead")) {
+            if (retries > 0) return setTimeout(() => waitForTableAndUpgrade(retries - 1), 500);
+            else return console.warn("❌ Table not found.");
+          }
+
+          if ($.fn.DataTable.isDataTable("#events")) $('#events').DataTable().destroy();
+
+          if (!tableEl.querySelector("tfoot")) {
+            const tfoot = tableEl.querySelector("thead").cloneNode(true);
+            tfoot.querySelectorAll("th").forEach(cell => cell.innerHTML = "");
+            tableEl.appendChild(tfoot);
+          }
+
+          $('#events').DataTable({
+            responsive: true,
+            paging: false,
+            ordering: true,
+            info: false,
+            dom: 'QBfrtip',
+            buttons: ['csv', 'excel'],
+            searchBuilder: { columns: true },
+            columnDefs: [{ targets: -1, orderable: false }],
+            initComplete: function () {
+              this.api().columns().every(function () {
+                const input = document.createElement("input");
+                input.placeholder = "Filter...";
+                input.style.width = "100%";
+                $(input).appendTo($(this.footer()).empty())
+                  .on("keyup change clear", function () {
+                    this.search(this.value).draw();
+                  }.bind(this));
+              });
+              addFancyRandomEventButtonBelowH1();
+            }
+          });
+        })();
+        </script>
+    </body>
+    </html>
+    
