@@ -11,6 +11,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+import json
+
 
 # === Calculate Upcoming Friday–Sunday Dates ===
 def get_upcoming_weekend_dates():
@@ -595,6 +597,12 @@ async def aggregate_events():
                 deduped_events.append(event)
         all_events = deduped_events
 
+	try:
+	    with open("eventbrite.json", "r") as f:
+	        eventbrite_events = json.load(f)
+	        all_events += eventbrite_events
+	except:
+	    print("⚠️ Could not load Eventbrite data")
 
     html_output = generate_html(all_events)
     with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
