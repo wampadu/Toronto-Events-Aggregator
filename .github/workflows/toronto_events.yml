@@ -2,7 +2,7 @@ name: Toronto Weekend Events
 
 on:
   schedule:
-    - cron: '0 10 * * 5'   # Every Friday
+    - cron: '0 6 * * 5'   # Every Friday
   workflow_dispatch:
 
 permissions:
