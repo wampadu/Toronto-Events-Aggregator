@@ -319,7 +319,10 @@ async def aggregate_events():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
         page = await browser.new_page()
-        all_events += await scrape_eventbrite(page)
+        try:
+            all_events += await scrape_eventbrite(page)
+        except:
+            print("⚠️ Could not load Eventbrite data")
         await browser.close()
 
         # 🧹 De-duplicate by title only
