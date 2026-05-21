@@ -580,7 +580,7 @@ async def aggregate_events():
 
 
     html_output = generate_html(all_events)
-    with open("index.html", "w", encoding="utf-8") as f:
+    with open("weekend_events_toronto.html", "w", encoding="utf-8") as f:
         f.write(html_output)
     print("✅ File saved: weekend_events_toronto.html")
 
