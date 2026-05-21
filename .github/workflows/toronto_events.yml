@@ -31,8 +31,8 @@ jobs:
       # ✅ Run BOTH scripts
       - name: Run all scrapers
         run: |
+          xvfb-run -a python events_emailer_eventbrite_only.py        
           xvfb-run -a python events_emailer.py
-          xvfb-run -a python events_emailer_eventbrite_only.py
 
       # ✅ Commit BOTH HTML pages
       - name: Commit and push HTML files
