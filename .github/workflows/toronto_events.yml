@@ -1,12 +1,12 @@
-name: Toronto Weekend Eventbrite Events
+name: Toronto Weekend Events
 
 on:
   schedule:
-    - cron: '0 10 * * 5'  # Every Friday
+    - cron: '0 10 * * 5'   # Every Friday
   workflow_dispatch:
 
 permissions:
-  contents: write   # ✅ Required for pushing updates
+  contents: write
 
 jobs:
   scrape-and-publish:
@@ -28,13 +28,17 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps
 
-      - name: Run script
-        run: xvfb-run -a python events_emailer_eventbrite_only.py
+      # ✅ Run BOTH scripts
+      - name: Run all scrapers
+        run: |
+          xvfb-run -a python events_emailer.py
+          xvfb-run -a python events_emailer_eventbrite_only.py
 
-      - name: Commit HTML file
+      # ✅ Commit BOTH HTML pages
+      - name: Commit and push HTML files
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          git add weekend_events_toronto.html
-          git commit -m "Update weekend events" || echo "No changes"
+          git add *.html
+          git commit -m "Update all event pages" || echo "No changes"
           git push
