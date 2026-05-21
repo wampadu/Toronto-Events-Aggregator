@@ -565,8 +565,7 @@ async def aggregate_events():
         all_events += await scrape_meetup(page)
         all_events += await scrape_blogto(page)
         all_events += await scrape_fever(page)
-        # all_events += await scrape_eventbrite(page
-
+        # all_events += await scrape_eventbrite(page)
         await browser.close()
 
         # 🧹 De-duplicate by title only
