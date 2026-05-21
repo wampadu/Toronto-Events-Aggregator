@@ -20,7 +20,7 @@ def get_upcoming_weekend_dates():
     #days_until_friday = (4 - today.weekday()) % 7
     #friday = today + timedelta(days=days_until_friday + 0)
     #return [friday, friday + timedelta(days=1), friday + timedelta(days=2)]
-    return [today + timedelta(days=3), today + timedelta(days=10)]
+    return [today + timedelta(days=0), today + timedelta(days=10)]
 
 # === HTML Output ===
 def generate_html(events):
