@@ -336,10 +336,10 @@ async def aggregate_events():
     	json.dump(all_events, f)
     print("✅ Json saved: weekend_eventbrite_toronto")
 	
-    html_output = generate_html(all_events)
-    with open("weekend_eventbrite_toronto.html", "w", encoding="utf-8") as f:
-        f.write(html_output)
-    print("✅ File saved: weekend_eventbrite_toronto.html")
+    #html_output = generate_html(all_events)
+    #with open("weekend_eventbrite_toronto.html", "w", encoding="utf-8") as f:
+    #    f.write(html_output)
+    #print("✅ File saved: weekend_eventbrite_toronto.html")
 
 
     # Send the email
