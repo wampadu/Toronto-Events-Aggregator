@@ -561,10 +561,27 @@ async def aggregate_events():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
         page = await browser.new_page()
-        all_events += await scrape_stubhub(page)
-        all_events += await scrape_meetup(page)
-        all_events += await scrape_blogto(page)
-        all_events += await scrape_fever(page)
+
+        try:
+            all_events += await scrape_stubhub(page)
+        except Exception as e:
+            print(f"⚠️ StubHub failed: {e}")
+
+        try:
+            all_events += await scrape_meetup(page)
+        except Exception as e:
+            print(f"⚠️ Meetup failed: {e}")
+
+        try:
+            all_events += await scrape_blogto(page)
+        except Exception as e:
+            print(f"⚠️ BlogTO failed: {e}")
+
+        try:
+            all_events += await scrape_fever(page)
+        except Exception as e:
+            print(f"⚠️ Fever failed: {e}")
+
         # all_events += await scrape_eventbrite(page)
         await browser.close()
 
