@@ -12,7 +12,60 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 import json
+import re
+from datetime import datetime
 
+def normalize_date(date_str):
+    if not date_str:
+        return ""
+
+    try:
+        original = date_str.strip()
+
+        #  Case 1: Date range (keep end)
+        if " - " in original:
+            start, end = original.split(" - ", 1)
+            return f"{start.strip()} (Until {end.strip()})"
+
+        #  Extract main date (Month Day OR Day Month style)
+        main_match = None
+
+        # Case: "May 22"
+        main_match = re.search(r'([A-Za-z]+)\s+(\d{1,2})', original)
+
+        # Case: "Fri, May 22"
+        if not main_match:
+            main_match = re.search(r'[A-Za-z]{3},?\s+([A-Za-z]+)\s+(\d{1,2})', original)
+
+        if main_match:
+            month = main_match.group(1)
+            day = main_match.group(2)
+
+            main_date = f"{day} {month}"
+
+            # Remove ONLY that exact date portion once
+            cleaned = original.replace(main_match.group(0), "", 1)
+
+            # Clean formatting
+            cleaned = cleaned.replace("··", "·")
+            cleaned = re.sub(r'\s+', ' ', cleaned)  # remove extra spaces
+            cleaned = cleaned.strip()
+
+            # Remove leading separators like "·"
+            if cleaned.startswith("·"):
+                cleaned = cleaned[1:].strip()
+
+            # If there's anything left, keep it
+            if cleaned:
+                return f"{main_date} ({cleaned})"
+            else:
+                return main_date
+
+        return original
+
+    except Exception as e:
+        print(f"⚠️ Date parse failed: {date_str} -> {e}")
+        return date_str
 
 # === Calculate Upcoming Friday–Sunday Dates ===
 def get_upcoming_weekend_dates():
@@ -71,7 +124,7 @@ def generate_html(events):
             <tr>
                 <td>{f'<img src="{html.escape(e["image"])}">' if e.get('image', '').startswith('http') else ''}</td>
                 <td><a href="{html.escape(e['url'])}" target="_blank">{html.escape(e['title'])}</a></td>
-                <td>{html.escape(e.get('date', ''))}</td>
+                <td>{html.escape(normalize_date(e.get('date', '')))}</td>
                 <td>{html.escape(e.get('price', ''))}</td>
                 <td>{html.escape(e.get('description', ''))}</td>
                 <td>{html.escape(e.get('source', ''))}</td>
