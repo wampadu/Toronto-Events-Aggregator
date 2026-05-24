@@ -215,23 +215,62 @@ async def scrape_eventbrite(page):
     start_str = dates[0].strftime("%Y-%m-%d")
     end_str = dates[-1].strftime("%Y-%m-%d")
     url = f"https://www.eventbrite.ca/d/canada--toronto/events/?start_date={start_str}&end_date={end_str}"
-    await page.goto(url)
+    
+    try:
+        await page.goto(url, timeout=30000, wait_until="networkidle")
+    except Exception as e:
+        print(f"❌ Failed to navigate to Eventbrite: {e}")
+        return []
+
+    # Wait for event cards to appear with better timeout handling
+    try:
+        await page.wait_for_selector("li [data-testid='search-event']", timeout=10000)
+    except:
+        print("⚠️ Initial event cards not found, trying alternative approach...")
+        try:
+            await page.wait_for_selector("[data-testid='search-event']", timeout=5000)
+        except:
+            print("⚠️ Could not find event cards with either selector")
+            return []
 
     while True:
         print("🔄 Scrolling to load events on current page...")
         prev_height = 0
         retries = 0
-        while retries < 5:
-            await page.mouse.wheel(0, 5000)
-            await asyncio.sleep(1.2)
-            curr_height = await page.evaluate("document.body.scrollHeight")
+        
+        # Scroll until no more new events load
+        while retries < 8:  # Increased from 5 to 8
+            try:
+                await page.mouse.wheel(0, 5000)
+            except:
+                pass
+            await asyncio.sleep(1.5)  # Increased from 1.2 to 1.5
+            
+            try:
+                curr_height = await page.evaluate("document.body.scrollHeight")
+            except:
+                break
+            
             if curr_height == prev_height:
                 retries += 1
             else:
                 retries = 0
                 prev_height = curr_height
 
-        cards = await page.query_selector_all("li [data-testid='search-event']")
+        # Get all event cards with fallback selectors
+        cards = []
+        try:
+            cards = await page.query_selector_all("li [data-testid='search-event']")
+        except:
+            pass
+        
+        if not cards:
+            print("⚠️ Selector 'li [data-testid]' failed, trying alternative...")
+            try:
+                cards = await page.query_selector_all("[data-testid='search-event']")
+            except:
+                pass
+        
         print(f"🧾 Found {len(cards)} event cards on this page.")
 
         for card in cards:
@@ -243,7 +282,6 @@ async def scrape_eventbrite(page):
                 location_el = await card.query_selector(".Typography_root__487rx.Typography_body-md__487rx")
                 date_text = (await date_el.inner_text()).strip() if date_el else "N/A"
                 location_text = (await location_el.inner_text()).strip() if location_el else "N/A"
-                date_text = date_text
 
                 img_el = await card.query_selector("img.event-card-image")
                 img_url = await img_el.get_attribute("src") if img_el else ""
@@ -254,18 +292,22 @@ async def scrape_eventbrite(page):
                 price_el = await card.query_selector("div[class*='priceWrapper'] p")
                 price = (await price_el.inner_text()).strip() if price_el else "Free"
 
-                events.append({
-                    "title": title,
-                    "date": date_text,
-                    "description": location_text,
-                    "image": img_url,
-                    "url": link,
-                    "price": price,
-                    "source": "Eventbrite"
-                })
+                # Only add if we have a title and link
+                if title and title != "N/A" and link:
+                    events.append({
+                        "title": title,
+                        "date": date_text,
+                        "description": location_text,
+                        "image": img_url,
+                        "url": link,
+                        "price": price,
+                        "source": "Eventbrite"
+                    })
             except Exception as e:
-                print("⚠️ Error extracting event:", e)
+                print(f"⚠️ Error extracting event: {e}")
+                continue
 
+        # Check for next page button
         try:
             next_btn = await page.query_selector('[data-testid="page-next"]:not([aria-disabled="true"])')
             if next_btn:
@@ -276,8 +318,9 @@ async def scrape_eventbrite(page):
                 print("🛑 No more pages.")
                 break
         except Exception as e:
-            print("⚠️ Pagination error:", e)
+            print(f"⚠️ Pagination error: {e}")
             break
+    
     print(f"✅ Finished scraping. Found {len(events)} events.")
     return events
 
