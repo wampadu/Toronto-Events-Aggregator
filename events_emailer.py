@@ -450,26 +450,65 @@ async def scrape_stubhub(page):
 
     # Step 4: Click the correct date range in calendar
     dates = get_upcoming_weekend_dates()
-    start_str = dates[0].strftime('%a %b %d %Y')  # e.g. 'Fri Aug 01 2025'
-    end_str = dates[-1].strftime('%a %b %d %Y')    # e.g. 'Sun Aug 03 2025'
+    start_date = dates[0]
+    end_date = dates[-1]
+    
+    # Format: "Sat May 23 2026"
+    start_str = start_date.strftime('%a %b %d %Y')
+    end_str = end_date.strftime('%a %b %d %Y')
 
-    # click "next month" if August is not shown
-    for i in range(3):
-        if not await page.query_selector(f"[aria-label='{start_str}']"):
-            next_btn = await page.query_selector("button[aria-label='Next Month']")
-            if next_btn:
-                await next_btn.click()
-                await page.wait_for_timeout(1000)
+    print(f"🗓️ Looking for dates: {start_str} to {end_str}")
+
+    # Navigate calendar to show the target month (with better retry logic)
+    max_nav_attempts = 12
+    for attempt in range(max_nav_attempts):
+        start_btn = await page.query_selector(f"[aria-label='{start_str}']")
+        if start_btn:
+            print(f"✅ Found start date button on attempt {attempt}")
+            break
+        
+        next_btn = await page.query_selector("button[aria-label='Next Month']")
+        if next_btn:
+            await next_btn.click()
+            await page.wait_for_timeout(800)
+        else:
+            print("⚠️ No 'Next Month' button found, may already be at the end")
+            break
+    else:
+        print(f"❌ Could not find start date {start_str} after {max_nav_attempts} attempts")
+        return []
+
+    # Click start date
+    try:
+        start_btn = await page.query_selector(f"[aria-label='{start_str}']")
+        if start_btn:
+            await start_btn.click()
+            await page.wait_for_timeout(500)
+        else:
+            print(f"❌ Start date button not found: {start_str}")
+            return []
+    except Exception as e:
+        print(f"❌ Failed to click start date: {e}")
+        return []
+
+    # Click end date - may need additional navigation
+    max_end_attempts = 6
+    for attempt in range(max_end_attempts):
+        end_btn = await page.query_selector(f"[aria-label='{end_str}']")
+        if end_btn:
+            await end_btn.click()
+            await page.wait_for_timeout(2000)
+            print(f"✅ Successfully selected end date on attempt {attempt}")
+            break
+        
+        next_btn = await page.query_selector("button[aria-label='Next Month']")
+        if next_btn:
+            await next_btn.click()
+            await page.wait_for_timeout(800)
         else:
             break
-
-    try:
-        await page.click(f"[aria-label='{start_str}']")
-        await page.wait_for_timeout(300)
-        await page.click(f"[aria-label='{end_str}']")
-        await page.wait_for_timeout(2000)
-    except Exception as e:
-        print(f"❌ Failed selecting dates {start_str} to {end_str}: {e}")
+    else:
+        print(f"❌ Could not find or click end date {end_str} after {max_end_attempts} attempts")
         return []
 
     # Step 5: Load all listings via scroll + "Show More"
@@ -672,36 +711,3 @@ async def aggregate_events():
 
 if __name__ == "__main__":
     asyncio.run(aggregate_events())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
